@@ -780,11 +780,20 @@ def exportar_excel():
 
 # ─── INIT ────────────────────────────────────────────────────────────────────
 
-with app.app_context():
-    db.create_all()
-    if not Usuario.query.first():
-        db.session.add(Usuario(nombre='Admin', email='admin@empresa.com'))
-        db.session.commit()
+_db_initialized = False
+
+@app.before_request
+def init_db_once():
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            db.create_all()
+            if not Usuario.query.first():
+                db.session.add(Usuario(nombre='Admin', email='admin@empresa.com'))
+                db.session.commit()
+            _db_initialized = True
+        except Exception as e:
+            print(f'DB init error: {e}')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
