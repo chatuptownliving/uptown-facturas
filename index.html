@@ -1167,6 +1167,23 @@ async function renderBanco() {
         <div id="edo-upload-result" style="margin-top:10px"></div>
       </div>
 
+      <!-- Analizar con IA -->
+      <div class="table-wrap" style="padding:20px">
+        <div class="section-title" style="margin-bottom:4px;font-size:14px">Analizar con IA <span class="badge badge-ok" style="font-size:9px;margin-left:6px">NUEVO</span></div>
+        <div class="text-sm text-muted" style="margin-bottom:16px">Sube el PDF o foto — la IA extrae y registra todos los movimientos automáticamente</div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">Banco</label>
+          <input class="form-input" id="ia-banco" placeholder="Ej. BBVA, Banamex, HSBC">
+        </div>
+        <div class="upload-zone" style="padding:20px" onclick="document.getElementById('ia-edo-file').click()">
+          <div class="upload-icon" style="font-size:24px">🤖</div>
+          <div class="upload-title" style="font-size:13px">IA extrae todos los movimientos</div>
+          <div class="upload-sub">PDF · JPG · PNG del estado de cuenta</div>
+          <input type="file" id="ia-edo-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="analizarEstadoCuentaIA(this)">
+        </div>
+        <div id="ia-resultado" style="margin-top:12px"></div>
+      </div>
+
       <!-- Importar movimientos CSV -->
       <div class="table-wrap" style="padding:20px">
         <div class="section-title" style="margin-bottom:4px;font-size:14px">Importar movimientos</div>
@@ -1655,6 +1672,50 @@ async function subirEstadoCuenta(input) {
     }
   } catch(e) {
     resultEl.innerHTML = '<span class="badge badge-danger">✗ Error subiendo archivo</span>';
+  }
+  input.value = '';
+}
+
+// ─── ANALIZAR ESTADO DE CUENTA IA ──────────────────────────────────────────
+async function analizarEstadoCuentaIA(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const banco = document.getElementById('ia-banco').value || 'Banco';
+  const resultEl = document.getElementById('ia-resultado');
+
+  resultEl.innerHTML = '<span class="spinner"></span> <span class="text-muted text-sm">Analizando con IA — puede tomar 15-30 segundos...</span>';
+
+  const fd = new FormData();
+  fd.append('archivo', file);
+  fd.append('usuario_id', state.usuarioId);
+  fd.append('banco', banco);
+
+  try {
+    const res = await fetch('/api/estados-cuenta/analizar-ia', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (res.ok) {
+      const driveMsg = data.drive?.ok ? `<br><span style="color:var(--accent);font-size:11px">✓ Drive: ${data.drive.nombre}</span>` : '';
+      resultEl.innerHTML = `
+        <div style="background:var(--surface2);border-radius:var(--r);padding:14px;border:1px solid rgba(225,143,0,0.2)">
+          <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">${data.banco} — ${data.periodo}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div><span class="text-muted">Saldo inicial:</span> <strong>$${Number(data.saldo_inicial).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
+            <div><span class="text-muted">Saldo final:</span> <strong>$${Number(data.saldo_final).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
+            <div><span class="text-muted">Movimientos encontrados:</span> <strong>${data.movimientos_extraidos}</strong></div>
+            <div><span class="text-muted">Guardados en sistema:</span> <strong>${data.movimientos_guardados}</strong></div>
+          </div>
+          ${driveMsg}
+        </div>
+      `;
+      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} importados`, 'success');
+      await cargarYRenderBanco();
+    } else {
+      resultEl.innerHTML = `<span class="badge badge-danger">✗ ${data.error}</span>`;
+      toast('Error analizando estado de cuenta', 'error');
+    }
+  } catch(e) {
+    resultEl.innerHTML = '<span class="badge badge-danger">✗ Error de conexión</span>';
   }
   input.value = '';
 }
