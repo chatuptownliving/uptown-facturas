@@ -773,6 +773,90 @@ def exportar_excel():
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      as_attachment=True, download_name=nombre)
 
+
+# ─── GOOGLE DRIVE ───────────────────────────────────────────────────────────
+
+def get_drive_service():
+    """Returns authenticated Drive service if credentials are configured."""
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+        import json
+        creds_json = os.environ.get('GOOGLE_CREDENTIALS')
+        if not creds_json:
+            return None
+        creds_info = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_info,
+            scopes=['https://www.googleapis.com/auth/drive']
+        )
+        return build('drive', 'v3', credentials=creds)
+    except Exception:
+        return None
+
+def crear_carpeta_drive(service, nombre, parent_id=None):
+    meta = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder'}
+    if parent_id:
+        meta['parents'] = [parent_id]
+    f = service.files().create(body=meta, fields='id').execute()
+    return f.get('id')
+
+def buscar_o_crear_carpeta(service, nombre, parent_id=None):
+    q = f"name='{nombre}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    if parent_id:
+        q += f" and '{parent_id}' in parents"
+    res = service.files().list(q=q, fields='files(id,name)').execute()
+    files = res.get('files', [])
+    if files:
+        return files[0]['id']
+    return crear_carpeta_drive(service, nombre, parent_id)
+
+def subir_a_drive(service, contenido_bytes, nombre_archivo, mime_type, folder_id):
+    from googleapiclient.http import MediaIoBaseUpload
+    meta = {'name': nombre_archivo, 'parents': [folder_id]}
+    media = MediaIoBaseUpload(io.BytesIO(contenido_bytes), mimetype=mime_type)
+    f = service.files().create(body=meta, media_body=media, fields='id').execute()
+    return f.get('id')
+
+MESES_NOMBRE = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+@app.route('/api/drive/status', methods=['GET'])
+def drive_status():
+    service = get_drive_service()
+    return jsonify({'conectado': service is not None})
+
+@app.route('/api/drive/organizar', methods=['POST'])
+def organizar_en_drive():
+    """Organiza todas las facturas en carpetas Drive por año/mes."""
+    service = get_drive_service()
+    if not service:
+        return jsonify({'error': 'Google Drive no configurado. Agrega GOOGLE_CREDENTIALS en Railway Variables.'}), 400
+    
+    usuario_id = request.json.get('usuario_id', 1)
+    root_id = os.environ.get('DRIVE_FOLDER_ID')  # Carpeta raíz opcional
+    
+    facturas = Factura.query.filter_by(usuario_id=usuario_id).filter(
+        Factura.anio.isnot(None)
+    ).all()
+    
+    organizadas = 0
+    carpetas_cache = {}
+    
+    for f in facturas:
+        if not f.anio or not f.mes:
+            continue
+        key = f'{f.anio}/{f.mes}'
+        if key not in carpetas_cache:
+            folder_anio = buscar_o_crear_carpeta(service, str(f.anio), root_id)
+            folder_mes = buscar_o_crear_carpeta(service, MESES_NOMBRE[f.mes], folder_anio)
+            carpetas_cache[key] = folder_mes
+        f.drive_folder_id = carpetas_cache[key]
+        organizadas += 1
+    
+    db.session.commit()
+    return jsonify({'organizadas': organizadas, 'carpetas': list(carpetas_cache.keys())})
+
 # ─── INIT ────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
