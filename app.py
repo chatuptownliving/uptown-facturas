@@ -877,11 +877,20 @@ def analizar_estado_cuenta_ia():
 
     try:
         b64 = base64.standard_b64encode(contenido).decode('utf-8')
-        prompt = """Analiza este estado de cuenta bancario y extrae TODOS los movimientos.
-Responde UNICAMENTE con un JSON valido sin texto adicional ni ```:
-{"banco":"nombre banco","periodo":"Mes YYYY","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"descripcion","tipo":"abono","monto":0.0,"saldo":0.0}]}
-Para tipo: abono si es deposito/entrada, cargo si es retiro/pago/salida.
-Extrae TODOS los movimientos. Fechas siempre YYYY-MM-DD."""
+        prompt = """Analiza este estado de cuenta bancario mexicano y extrae TODOS los movimientos de TODAS las tarjetas y titulares.
+Responde UNICAMENTE con JSON valido sin texto adicional, sin ``` ni explicaciones:
+{"banco":"nombre banco","periodo":"Mes YYYY","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"descripcion del comercio","tipo":"cargo","monto":0.0,"tarjetahabiente":"nombre o titular"}]}
+
+Reglas estrictas:
+- tipo: usa exactamente "cargo" para compras/pagos/retiros, "abono" para pagos recibidos/devoluciones/cashback
+- fecha: convierte fechas como "13 mar 2026" a "2026-03-13", "01 abr 2026" a "2026-04-01"
+- monto: solo el numero sin simbolos, siempre positivo
+- Incluye movimientos de TODAS las secciones: titular y tarjetas adicionales
+- tarjetahabiente: nombre del titular de esa tarjeta o "Titular" si es la principal
+- NO incluyas filas de subtotales ni encabezados, solo movimientos reales
+- Si hay pagos via domiciliacion son tipo "abono"
+- Si hay cashback o bonificaciones son tipo "abono"
+- Responde SOLO el JSON, nada mas"""
 
         if ext in ['jpg', 'jpeg', 'png']:
             media_type = MIME_MAP.get(ext, 'image/jpeg')
@@ -897,7 +906,7 @@ Extrae TODOS los movimientos. Fechas siempre YYYY-MM-DD."""
 
         response = client.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{'role': 'user', 'content': content_ia}]
         )
 
