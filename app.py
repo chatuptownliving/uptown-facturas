@@ -188,7 +188,7 @@ Si no encuentras un campo déjalo vacío o en 0. Fecha siempre YYYY-MM-DD."""}
             ]
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             max_tokens=1000,
             messages=[{"role": "user", "content": content}]
         )
@@ -584,6 +584,49 @@ def importar_csv():
         except: continue
     db.session.commit()
     return jsonify({'importados': importados})
+
+
+@app.route('/api/estados-cuenta/subir', methods=['POST'])
+def subir_estado_cuenta():
+    usuario_id = request.form.get('usuario_id', 1, type=int)
+    mes = request.form.get('mes', type=int)
+    anio = request.form.get('anio', type=int)
+    banco = request.form.get('banco', 'Banco')
+
+    if 'archivo' not in request.files:
+        return jsonify({"error": "No se envio archivo"}), 400
+
+    archivo = request.files['archivo']
+    if not archivo.filename:
+        return jsonify({"error": "Archivo vacio"}), 400
+
+    filename = secure_filename(archivo.filename)
+    ext = filename.rsplit(".", 1)[1].lower() if "." in filename else "pdf"
+    contenido = archivo.read()
+
+    # Subir a Drive si está autorizado
+    drive_resultado = None
+    service = get_drive_service()
+    if service:
+        try:
+            root_id = os.environ.get("DRIVE_FOLDER_ID")
+            carpeta_edos = buscar_o_crear_carpeta(service, "Estados de Cuenta", root_id)
+            anio_str = str(anio) if anio else "Sin_Anio"
+            carpeta_anio = buscar_o_crear_carpeta(service, anio_str, carpeta_edos)
+            mes_str = MESES_NOMBRE[mes] if mes and 1 <= mes <= 12 else "Sin_Mes"
+            carpeta_mes = buscar_o_crear_carpeta(service, mes_str, carpeta_anio)
+            nombre_archivo = f"{limpiar_nombre(banco)}_{anio_str}-{str(mes).zfill(2) if mes else '00'}.{ext}"
+            mime = MIME_MAP.get(ext, "application/octet-stream")
+            file_id, link = subir_archivo_drive(service, contenido, nombre_archivo, mime, carpeta_mes)
+            drive_resultado = {"ok": True, "nombre": nombre_archivo, "link": link}
+        except Exception as e:
+            drive_resultado = {"ok": False, "error": str(e)}
+
+    return jsonify({
+        "ok": True,
+        "filename": filename,
+        "drive": drive_resultado
+    }), 201
 
 # ─── CONCILIACIÓN ───────────────────────────────────────────────────────────
 
