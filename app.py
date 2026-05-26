@@ -856,3 +856,107 @@ if __name__ == '__main__':
             db.session.add(Usuario(nombre='Admin', email='admin@empresa.com'))
             db.session.commit()
     app.run(debug=True, port=5001)
+
+# ─── ANÁLISIS IA ESTADO DE CUENTA ────────────────────────────────────────────
+
+@app.route('/api/estados-cuenta/analizar-ia', methods=['POST'])
+def analizar_estado_cuenta_ia():
+    usuario_id = request.form.get('usuario_id', 1, type=int)
+    banco = request.form.get('banco', 'Banco')
+
+    if 'archivo' not in request.files:
+        return jsonify({'error': 'No se envio archivo'}), 400
+
+    archivo = request.files['archivo']
+    if not archivo.filename:
+        return jsonify({'error': 'Archivo vacio'}), 400
+
+    filename = secure_filename(archivo.filename)
+    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'pdf'
+    contenido = archivo.read()
+
+    try:
+        b64 = base64.standard_b64encode(contenido).decode('utf-8')
+        prompt = """Analiza este estado de cuenta bancario y extrae TODOS los movimientos.
+Responde UNICAMENTE con un JSON valido sin texto adicional ni ```:
+{"banco":"nombre banco","periodo":"Mes YYYY","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"descripcion","tipo":"abono","monto":0.0,"saldo":0.0}]}
+Para tipo: abono si es deposito/entrada, cargo si es retiro/pago/salida.
+Extrae TODOS los movimientos. Fechas siempre YYYY-MM-DD."""
+
+        if ext in ['jpg', 'jpeg', 'png']:
+            media_type = MIME_MAP.get(ext, 'image/jpeg')
+            content_ia = [
+                {'type': 'image', 'source': {'type': 'base64', 'media_type': media_type, 'data': b64}},
+                {'type': 'text', 'text': prompt}
+            ]
+        else:
+            content_ia = [
+                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
+                {'type': 'text', 'text': prompt}
+            ]
+
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=4000,
+            messages=[{'role': 'user', 'content': content_ia}]
+        )
+
+        texto = response.content[0].text.strip().replace('```json', '').replace('```', '').strip()
+        datos = json.loads(texto)
+
+        movimientos_guardados = 0
+        errores = 0
+        for mov in datos.get('movimientos', []):
+            try:
+                fecha = None
+                if mov.get('fecha'):
+                    try:
+                        fecha = datetime.strptime(mov['fecha'][:10], '%Y-%m-%d').date()
+                    except:
+                        pass
+                m = MovimientoBancario(
+                    usuario_id=usuario_id,
+                    fecha=fecha,
+                    mes=fecha.month if fecha else None,
+                    anio=fecha.year if fecha else None,
+                    descripcion=mov.get('descripcion', ''),
+                    tipo=mov.get('tipo', 'cargo'),
+                    monto=float(mov.get('monto', 0)),
+                    saldo=float(mov.get('saldo', 0)) if mov.get('saldo') else None,
+                    referencia=banco
+                )
+                db.session.add(m)
+                movimientos_guardados += 1
+            except:
+                errores += 1
+
+        db.session.commit()
+
+        drive_resultado = None
+        service = get_drive_service()
+        if service:
+            try:
+                root_id = os.environ.get('DRIVE_FOLDER_ID')
+                carpeta_edos = buscar_o_crear_carpeta(service, 'Estados de Cuenta', root_id)
+                periodo = datos.get('periodo', 'Sin_Periodo').replace(' ', '_')
+                carpeta_periodo = buscar_o_crear_carpeta(service, periodo, carpeta_edos)
+                nombre_drive = f"{limpiar_nombre(datos.get('banco', banco))}_{periodo}.{ext}"
+                mime = MIME_MAP.get(ext, 'application/octet-stream')
+                file_id, link = subir_archivo_drive(service, contenido, nombre_drive, mime, carpeta_periodo)
+                drive_resultado = {'ok': True, 'nombre': nombre_drive, 'link': link}
+            except Exception as e:
+                drive_resultado = {'ok': False, 'error': str(e)}
+
+        return jsonify({
+            'ok': True,
+            'banco': datos.get('banco', banco),
+            'periodo': datos.get('periodo', ''),
+            'saldo_inicial': datos.get('saldo_inicial', 0),
+            'saldo_final': datos.get('saldo_final', 0),
+            'movimientos_extraidos': len(datos.get('movimientos', [])),
+            'movimientos_guardados': movimientos_guardados,
+            'drive': drive_resultado
+        }), 201
+
+    except Exception as e:
+        return jsonify({'error': f'Error analizando: {str(e)}'}), 422
