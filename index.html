@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Uptown Living — Gestión de Facturas</title>
+<title>Uptown — Gestión de Facturas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -644,12 +644,21 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <svg width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M20 95 L20 38 Q20 28 30 28 L50 28 Q56 28 56 35 L56 58 Q56 63 61 63 L70 63 Q76 63 76 58 L76 28 L90 28 Q100 28 100 38 L100 62 Q100 80 85 88 L60 100 L35 88 Q20 80 20 62Z" fill="#e18f00"/>
+        <svg width="32" height="36" viewBox="0 0 160 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Left thin column -->
+          <rect x="8" y="60" width="28" height="90" rx="6" fill="#e18f00"/>
+          <!-- Inner small column (middle notch detail) -->
+          <rect x="48" y="80" width="20" height="70" rx="5" fill="#e18f00"/>
+          <!-- Right large column with rounded top cap -->
+          <path d="M86 20 Q86 8 100 8 L136 8 Q150 8 150 22 L150 148 Q150 156 142 156 L94 156 Q86 156 86 148 Z" fill="#e18f00"/>
+          <!-- Bottom bridge connecting left to right -->
+          <rect x="8" y="130" width="142" height="30" rx="8" fill="#e18f00"/>
+          <!-- Cutout to create inner U space -->
+          <rect x="36" y="60" width="50" height="72" fill="#1e1e1e"/>
         </svg>
         <div>
           <div class="logo-mark">UPTOWN</div>
-          <div class="logo-sub">LIVING · Facturas</div>
+          <div class="logo-sub">· Facturas</div>
         </div>
       </div>
     </div>
@@ -688,14 +697,19 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <main class="main">
     <header class="topbar">
       <div style="display:flex;align-items:center;gap:14px">
-        <svg width="22" height="22" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M20 95 L20 38 Q20 28 30 28 L50 28 Q56 28 56 35 L56 58 Q56 63 61 63 L70 63 Q76 63 76 58 L76 28 L90 28 Q100 28 100 38 L100 62 Q100 80 85 88 L60 100 L35 88 Q20 80 20 62Z" fill="#e18f00"/>
+        <svg width="22" height="24" viewBox="0 0 160 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="60" width="28" height="90" rx="6" fill="#e18f00"/>
+          <rect x="48" y="80" width="20" height="70" rx="5" fill="#e18f00"/>
+          <path d="M86 20 Q86 8 100 8 L136 8 Q150 8 150 22 L150 148 Q150 156 142 156 L94 156 Q86 156 86 148 Z" fill="#e18f00"/>
+          <rect x="8" y="130" width="142" height="30" rx="8" fill="#e18f00"/>
+          <rect x="36" y="60" width="50" height="72" fill="#393939"/>
         </svg>
         <div class="page-title" id="page-title">Dashboard</div>
       </div>
       <div class="topbar-actions">
         <select id="usuario-select" onchange="cambiarUsuario(this.value)" style="max-width:160px">
         </select>
+        <span id="drive-status" style="font-size:11px;font-family:var(--font-mono);color:var(--muted)"></span>
         <button class="btn btn-primary btn-sm" onclick="abrirModalFactura()">
           + Nueva factura
         </button>
@@ -1571,8 +1585,39 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
+// ─── DRIVE ───────────────────────────────────────────────────────────────
+async function checkDriveStatus() {
+  try {
+    const res = await fetch('/api/drive/status');
+    const data = await res.json();
+    const el = document.getElementById('drive-status');
+    if (el) el.textContent = data.conectado ? '● Drive conectado' : '';
+    if (el && data.conectado) el.style.color = '#e18f00';
+    const info = document.getElementById('drive-info');
+    if (info) info.innerHTML = data.conectado
+      ? '<span class="badge badge-ok">Drive conectado</span>'
+      : '<span class="badge badge-warn">Drive no configurado — agrega GOOGLE_CREDENTIALS en Railway</span>';
+  } catch(e) {}
+}
+
+async function organizarDrive() {
+  toast('Organizando facturas en Drive...', 'info');
+  const res = await fetch('/api/drive/organizar', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({usuario_id: state.usuarioId})
+  });
+  const data = await res.json();
+  if (res.ok) {
+    toast('✓ ' + data.organizadas + ' facturas organizadas en Drive', 'success');
+  } else {
+    toast('Drive: ' + data.error, 'error');
+  }
+}
+
 // INIT
 init();
+checkDriveStatus();
 </script>
 </body>
 </html>
