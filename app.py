@@ -85,6 +85,22 @@ class MovimientoBancario(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     facturas = db.relationship('Factura', backref='movimiento', foreign_keys=[Factura.movimiento_id])
 
+# ─── MODELO MSI ─────────────────────────────────────────────────────────────
+
+class ComprasMSI(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+    descripcion = db.Column(db.Text)
+    monto_original = db.Column(db.Float)
+    mensualidad = db.Column(db.Float)
+    meses_total = db.Column(db.Integer)
+    meses_pagados = db.Column(db.Integer, default=0)
+    saldo_pendiente = db.Column(db.Float)
+    fecha_inicio = db.Column(db.Date)
+    banco = db.Column(db.String(100))
+    activa = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 # ─── HELPERS ────────────────────────────────────────────────────────────────
 
 def allowed_file(filename):
@@ -550,19 +566,28 @@ def analizar_estado_cuenta_ia():
     contenido = archivo.read()
     try:
         b64 = base64.standard_b64encode(contenido).decode('utf-8')
-        prompt = """Analiza este estado de cuenta bancario mexicano y extrae TODOS los movimientos de TODAS las tarjetas y titulares.
-Responde UNICAMENTE con JSON valido sin texto adicional, sin ``` ni explicaciones:
-{"banco":"nombre banco","periodo":"Mes YYYY","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"descripcion del comercio","tipo":"cargo","monto":0.0,"tarjetahabiente":"nombre o titular"}]}
+        prompt = """Analiza este estado de cuenta bancario mexicano. Extrae DOS cosas:
+1) TODOS los movimientos de TODAS las tarjetas
+2) TODAS las compras a Meses Sin Intereses (MSI) de la tabla MSI si existe
 
-Reglas:
-- tipo: "cargo" para compras/pagos/retiros, "abono" para pagos recibidos/devoluciones/cashback
-- fecha: convierte "13 mar 2026" a "2026-03-13", "01 abr 2026" a "2026-04-01"
-- monto: solo el numero sin simbolos, siempre positivo
-- Incluye movimientos de TODAS las secciones: titular y tarjetas adicionales
-- tarjetahabiente: nombre del titular o "Titular" si es la principal
-- NO incluyas subtotales ni encabezados, solo movimientos reales
-- Pagos via domiciliacion son "abono", cashback y bonificaciones son "abono"
-- Responde SOLO el JSON"""
+Responde UNICAMENTE con este JSON valido sin texto adicional ni explicaciones:
+{"banco":"nombre","periodo":"Abril 2026","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"comercio","tipo":"cargo","monto":0.0,"tarjetahabiente":"nombre"}],"msi":[{"descripcion":"comercio","monto_original":0.0,"mensualidad":0.0,"meses_total":12,"meses_pagados":4,"saldo_pendiente":0.0,"fecha_inicio":"YYYY-MM-DD"}]}
+
+MOVIMIENTOS - reglas:
+- tipo: cargo=compras/pagos, abono=pagos recibidos/devoluciones/cashback/domiciliacion
+- fecha en formato YYYY-MM-DD (13 mar 2026 = 2026-03-13)
+- monto siempre positivo sin simbolos
+- Incluye movimientos de titular Y tarjetas adicionales
+- NO incluyas subtotales
+
+MSI - reglas:
+- Extrae de la tabla Meses Sin Intereses si existe
+- meses_pagados: primer numero (4 de 12 = 4 pagados)
+- meses_total: segundo numero (4 de 12 = 12 total)
+- fecha_inicio: convierte mes abreviado: ene=01 feb=02 mar=03 abr=04 may=05 jun=06 jul=07 ago=08 sep=09 oct=10 nov=11 dic=12
+- Si no hay tabla MSI deja array vacio
+
+Responde SOLO el JSON"""
         if ext in ['jpg', 'jpeg', 'png']:
             media_type = MIME_MAP.get(ext, 'image/jpeg')
             content_ia = [
@@ -581,6 +606,32 @@ Reglas:
         )
         texto = response.content[0].text.strip().replace('```json', '').replace('```', '').strip()
         datos = json.loads(texto)
+        # Guardar compras MSI si las hay
+        msi_guardadas = 0
+        for msi in datos.get('msi', []):
+            try:
+                fecha = None
+                if msi.get('fecha_inicio'):
+                    try: fecha = datetime.strptime(msi['fecha_inicio'][:10], '%Y-%m-%d').date()
+                    except: pass
+                # Convertir mes abreviado si es necesario
+                comp = ComprasMSI(
+                    usuario_id=usuario_id,
+                    descripcion=msi.get('descripcion', ''),
+                    monto_original=float(msi.get('monto_original', 0)),
+                    mensualidad=float(msi.get('mensualidad', 0)),
+                    meses_total=int(msi.get('meses_total', 0)),
+                    meses_pagados=int(msi.get('meses_pagados', 0)),
+                    saldo_pendiente=float(msi.get('saldo_pendiente', 0)),
+                    fecha_inicio=fecha,
+                    banco=banco
+                )
+                db.session.add(comp)
+                msi_guardadas += 1
+            except: pass
+        if msi_guardadas > 0:
+            db.session.commit()
+
         movimientos_guardados = errores = 0
         for mov in datos.get('movimientos', []):
             try:
@@ -622,6 +673,8 @@ Reglas:
             'saldo_final': datos.get('saldo_final', 0),
             'movimientos_extraidos': len(datos.get('movimientos', [])),
             'movimientos_guardados': movimientos_guardados,
+            'msi_guardadas': msi_guardadas,
+            'pago_mensual_msi': sum(float(m.get('mensualidad',0)) for m in datos.get('msi',[])),
             'drive': drive_resultado
         }), 201
     except Exception as e:
@@ -797,3 +850,46 @@ def init_db_once():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+# ─── MSI ROUTES ──────────────────────────────────────────────────────────────
+
+@app.route('/api/msi', methods=['GET'])
+def get_msi():
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    solo_activas = request.args.get('activas', 'true') == 'true'
+    query = ComprasMSI.query.filter_by(usuario_id=usuario_id)
+    if solo_activas:
+        query = query.filter_by(activa=True)
+    compras = query.order_by(ComprasMSI.fecha_inicio.desc()).all()
+    return jsonify([{
+        'id': c.id,
+        'descripcion': c.descripcion,
+        'monto_original': c.monto_original,
+        'mensualidad': c.mensualidad,
+        'meses_total': c.meses_total,
+        'meses_pagados': c.meses_pagados,
+        'meses_restantes': c.meses_total - c.meses_pagados,
+        'saldo_pendiente': c.saldo_pendiente,
+        'fecha_inicio': c.fecha_inicio.isoformat() if c.fecha_inicio else None,
+        'banco': c.banco,
+        'activa': c.activa,
+        'porcentaje_pagado': round((c.meses_pagados / c.meses_total * 100) if c.meses_total else 0, 1)
+    } for c in compras])
+
+@app.route('/api/msi/resumen', methods=['GET'])
+def resumen_msi():
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    compras = ComprasMSI.query.filter_by(usuario_id=usuario_id, activa=True).all()
+    total_deuda = sum(c.saldo_pendiente for c in compras)
+    pago_mensual = sum(c.mensualidad for c in compras)
+    return jsonify({
+        'compras_activas': len(compras),
+        'total_deuda_msi': total_deuda,
+        'pago_mensual_msi': pago_mensual,
+        'detalle': [{
+            'descripcion': c.descripcion,
+            'mensualidad': c.mensualidad,
+            'saldo_pendiente': c.saldo_pendiente,
+            'meses_restantes': c.meses_total - c.meses_pagados
+        } for c in compras]
+    })
