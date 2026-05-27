@@ -940,8 +940,22 @@ async function renderDashboard() {
   const r = await res.json();
   const content = document.getElementById('content');
 
+  // Fetch banco and MSI data in parallel
+  const [resBanco, resMSI] = await Promise.all([
+    fetch(`/api/movimientos?usuario_id=${state.usuarioId}`),
+    fetch(`/api/msi/resumen?usuario_id=${state.usuarioId}`)
+  ]);
+  const movimientos = await resBanco.json();
+  const msiResumen = await resMSI.json();
+
+  const totalAbonos = movimientos.filter(m=>m.tipo==='abono').reduce((s,m)=>s+m.monto,0);
+  const totalCargos = movimientos.filter(m=>m.tipo==='cargo').reduce((s,m)=>s+m.monto,0);
+  const movRecientes = movimientos.slice(0,5);
+
   content.innerHTML = `
-    <div class="cards-grid">
+    <!-- FACTURAS -->
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Facturas</div>
+    <div class="cards-grid" style="margin-bottom:20px">
       <div class="stat-card" style="--accent-card:var(--accent)">
         <div class="stat-label">Total facturas</div>
         <div class="stat-value">${r.total_facturas || 0}</div>
@@ -950,61 +964,90 @@ async function renderDashboard() {
       <div class="stat-card" style="--accent-card:var(--accent2)">
         <div class="stat-label">Por cobrar</div>
         <div class="stat-value" style="color:var(--accent2)">${fmt(r.por_cobrar||0)}</div>
-        <div class="stat-sub">${r.emitidas - r.conciliadas < 0 ? 0 : r.emitidas - r.conciliadas||0} facturas pendientes</div>
+        <div class="stat-sub">${Math.max(0,(r.emitidas||0)-(r.conciliadas||0))} facturas pendientes</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
         <div class="stat-label">Por pagar</div>
         <div class="stat-value" style="color:var(--danger)">${fmt(r.por_pagar||0)}</div>
         <div class="stat-sub">${r.pendientes||0} facturas pendientes</div>
       </div>
-      <div class="stat-card" style="--accent-card:var(--info)">
+      <div class="stat-card" style="--accent-card:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">
         <div class="stat-label">Balance neto</div>
         <div class="stat-value" style="color:${(r.balance||0) >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmt(r.balance||0)}</div>
         <div class="stat-sub">Emitido − Recibido</div>
       </div>
-      <div class="stat-card" style="--accent-card:var(--purple)">
-        <div class="stat-label">Conciliadas</div>
-        <div class="stat-value">${r.conciliadas||0}</div>
-        <div class="stat-sub">de ${r.total_facturas||0} total</div>
+    </div>
+
+    <!-- ESTADO DE CUENTA -->
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Estado de cuenta</div>
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Movimientos registrados</div>
+        <div class="stat-value">${movimientos.length}</div>
+        <div class="stat-sub">${movimientos.filter(m=>m.tipo==='abono').length} abonos · ${movimientos.filter(m=>m.tipo==='cargo').length} cargos</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Total abonos</div>
+        <div class="stat-value" style="color:var(--accent)">${fmt(totalAbonos)}</div>
+        <div class="stat-sub">Entradas registradas</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--danger)">
+        <div class="stat-label">Total cargos</div>
+        <div class="stat-value" style="color:var(--danger)">${fmt(totalCargos)}</div>
+        <div class="stat-sub">Salidas registradas</div>
+      </div>
+      <div class="stat-card" style="--accent-card:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">
+        <div class="stat-label">Flujo neto</div>
+        <div class="stat-value" style="color:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">${fmt(totalAbonos-totalCargos)}</div>
+        <div class="stat-sub">Abonos − Cargos</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px">
+
+    <!-- MSI -->
+    ${msiResumen.compras_activas > 0 ? `
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Meses sin intereses</div>
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="stat-card" style="--accent-card:var(--accent2)">
+        <div class="stat-label">Compras activas MSI</div>
+        <div class="stat-value">${msiResumen.compras_activas}</div>
+        <div class="stat-sub">A meses sin intereses</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--danger)">
+        <div class="stat-label">Deuda total MSI</div>
+        <div class="stat-value" style="color:var(--danger)">${fmt(msiResumen.total_deuda_msi||0)}</div>
+        <div class="stat-sub">Saldo pendiente</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent2)">
+        <div class="stat-label">Pago mensual MSI</div>
+        <div class="stat-value" style="color:var(--accent2)">${fmt(msiResumen.pago_mensual_msi||0)}</div>
+        <div class="stat-sub">Se cobra este mes</div>
+      </div>
+    </div>` : ''}
+
+    <!-- GRID INFERIOR -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div>
         <div class="section-header"><span class="section-title">Facturas recientes</span><button class="btn btn-ghost btn-sm" onclick="setPage('facturas')">Ver todas →</button></div>
         <div id="dash-facturas-recientes"></div>
       </div>
       <div>
-        <div class="section-header"><span class="section-title">Acciones rápidas</span></div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <button class="btn btn-secondary" onclick="abrirModalFactura()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
-            <span style="font-size:18px">⬆</span>
-            <div style="text-align:left">
-              <div style="font-weight:500">Subir facturas</div>
-              <div class="text-xs text-muted">XML, PDF o imagen — con extracción IA</div>
-            </div>
-          </button>
-          <button class="btn btn-secondary" onclick="setPage('banco');setTimeout(()=>document.getElementById('btn-import-csv')?.click(),400)" style="justify-content:flex-start;gap:12px;padding:14px 16px">
-            <span style="font-size:18px">⇄</span>
-            <div style="text-align:left">
-              <div style="font-weight:500">Importar estado de cuenta</div>
-              <div class="text-xs text-muted">CSV con fecha, descripción, monto</div>
-            </div>
-          </button>
-          <button class="btn btn-secondary" onclick="ejecutarConciliacion()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
-            <span style="font-size:18px">◎</span>
-            <div style="text-align:left">
-              <div style="font-weight:500">Ejecutar conciliación</div>
-              <div class="text-xs text-muted">Cruzar facturas contra movimientos</div>
-            </div>
-          </button>
-          <button class="btn btn-secondary" onclick="setPage('reportes')" style="justify-content:flex-start;gap:12px;padding:14px 16px">
-            <span style="font-size:18px">↓</span>
-            <div style="text-align:left">
-              <div style="font-weight:500">Exportar a Excel</div>
-              <div class="text-xs text-muted">Reporte mensual con 4 hojas</div>
-            </div>
-          </button>
-        </div>
+        <div class="section-header"><span class="section-title">Movimientos recientes</span><button class="btn btn-ghost btn-sm" onclick="setPage('banco')">Ver todos →</button></div>
+        ${movRecientes.length === 0 ? '<div class="empty-state" style="padding:30px"><p>Sin movimientos aún</p></div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead>
+            <tbody>
+              ${movRecientes.map(m=>`
+                <tr>
+                  <td class="text-sm text-muted">${m.fecha||'—'}</td>
+                  <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${m.descripcion||'—'}</td>
+                  <td>${m.tipo==='abono'?'<span class="badge badge-ok">Abono</span>':'<span class="badge badge-danger">Cargo</span>'}</td>
+                  <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};">${fmt(m.monto)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`}
       </div>
     </div>
   `;
