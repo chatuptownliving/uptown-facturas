@@ -1,895 +1,411 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect, session
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.utils import secure_filename
-from datetime import datetime
+#!/usr/bin/env python3
+"""Uptown Living — Servidor completo con 9 documentos"""
+
+from flask import Flask, request, jsonify, send_from_directory, redirect
+import os, re, zipfile, shutil, tempfile, json, requests
+from pathlib import Path
 import anthropic
-import json
-import os
-import io
-import base64
-import re
-import xml.etree.ElementTree as ET
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'uptown-secret-2025')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///facturas.db').replace('postgres://', 'postgresql://')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app = Flask(__name__, static_folder='.')
+app.secret_key = os.environ.get('SECRET_KEY', 'uptown-secret-2026')
 
-db = SQLAlchemy(app)
-client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
-
-ALLOWED_EXTENSIONS = {'xml', 'pdf', 'jpg', 'jpeg', 'png'}
-MESES_NOMBRE = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-MIME_MAP = {
-    'pdf': 'application/pdf',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'xml': 'application/xml'
+BASE_DIR = Path(__file__).parent / 'docs'
+DOCS_BASE = {
+    'contrato':   BASE_DIR / 'Contrato_603-_Juan_Carlos_Cordoba_Manzanares.docx',
+    'apartado':   BASE_DIR / '2_-APARTADO_NUEVO.docx',
+    'acta':       BASE_DIR / '3_-ACTA_DE_ENTREGA_Y_RECEPCION_102.docx',
+    'poliza':     BASE_DIR / '4_-POLIZA_DE_GARANTIA_102.docx',
+    'responsiva': BASE_DIR / '5-RESPONSIVA_DE_MUDANZA_102.docx',
+    'reporte':    BASE_DIR / '6_-REPORTE_DE_REPARACION_102.docx',
+    'aviso':      BASE_DIR / '7_-AVISO_MANTENIMIENTO.docx',
+    'cfe':        BASE_DIR / 'REQUISITOS_CONTRATACION_CFE_2026.docx',
+    'bienvenida': BASE_DIR / '9_-BIENVENIDA.docx',
 }
 
-# ─── MODELOS ────────────────────────────────────────────────────────────────
-
-class Usuario(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    facturas = db.relationship('Factura', backref='usuario', lazy=True)
-
-class Factura(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
-    folio = db.Column(db.String(50))
-    uuid_cfdi = db.Column(db.String(100))
-    fecha_emision = db.Column(db.Date)
-    mes = db.Column(db.Integer)
-    anio = db.Column(db.Integer)
-    rfc_emisor = db.Column(db.String(20))
-    nombre_emisor = db.Column(db.String(200))
-    rfc_receptor = db.Column(db.String(20))
-    nombre_receptor = db.Column(db.String(200))
-    concepto = db.Column(db.Text)
-    subtotal = db.Column(db.Float, default=0)
-    iva = db.Column(db.Float, default=0)
-    total = db.Column(db.Float, default=0)
-    moneda = db.Column(db.String(10), default='MXN')
-    tipo = db.Column(db.String(20))
-    estado_pago = db.Column(db.String(30), default='pendiente')
-    archivo_nombre = db.Column(db.String(200))
-    archivo_tipo = db.Column(db.String(10))
-    archivo_contenido = db.Column(db.LargeBinary)
-    drive_folder_id = db.Column(db.String(100))
-    drive_file_id = db.Column(db.String(100))
-    conciliada = db.Column(db.Boolean, default=False)
-    movimiento_id = db.Column(db.Integer, db.ForeignKey('movimiento_bancario.id'), nullable=True)
-    notas_ia = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class MovimientoBancario(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
-    fecha = db.Column(db.Date)
-    mes = db.Column(db.Integer)
-    anio = db.Column(db.Integer)
-    descripcion = db.Column(db.Text)
-    referencia = db.Column(db.String(100))
-    tipo = db.Column(db.String(10))
-    monto = db.Column(db.Float)
-    saldo = db.Column(db.Float, nullable=True)
-    conciliado = db.Column(db.Boolean, default=False)
-    factura_id = db.Column(db.Integer, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    facturas = db.relationship('Factura', backref='movimiento', foreign_keys=[Factura.movimiento_id])
-
-# ─── MODELO MSI ─────────────────────────────────────────────────────────────
-
-class ComprasMSI(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
-    descripcion = db.Column(db.Text)
-    monto_original = db.Column(db.Float)
-    mensualidad = db.Column(db.Float)
-    meses_total = db.Column(db.Integer)
-    meses_pagados = db.Column(db.Integer, default=0)
-    saldo_pendiente = db.Column(db.Float)
-    fecha_inicio = db.Column(db.Date)
-    banco = db.Column(db.String(100))
-    activa = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-# ─── HELPERS ────────────────────────────────────────────────────────────────
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def limpiar_nombre(nombre):
-    if not nombre:
-        return 'Desconocido'
-    nombre = nombre.strip()
-    nombre = re.sub(r'[^\w\s\-]', '', nombre, flags=re.UNICODE)
-    nombre = re.sub(r'\s+', '_', nombre)
-    return nombre[:50]
-
-def nombre_archivo_drive(factura, ext):
-    empresa = factura.nombre_emisor if factura.tipo == 'recibida' else factura.nombre_receptor
-    empresa = limpiar_nombre(empresa) if empresa else 'Desconocido'
-    fecha_str = factura.fecha_emision.strftime('%Y-%m-%d') if factura.fecha_emision else 'sin-fecha'
-    return f"{empresa}_{fecha_str}.{ext}"
-
-# ─── EXTRACCIÓN XML ─────────────────────────────────────────────────────────
-
-def extraer_datos_xml(contenido_xml):
-    try:
-        root = ET.fromstring(contenido_xml)
-        ns = {'cfdi': 'http://www.sat.gob.mx/cfd/4', 'cfdi3': 'http://www.sat.gob.mx/cfd/3'}
-        tag = root.tag
-        prefix = 'cfdi' if '4' in tag else 'cfdi3'
-        def attr(el, name, default=''):
-            return el.get(name, default) if el is not None else default
-        emisor = root.find(f'{prefix}:Emisor', ns) or root.find('Emisor')
-        receptor = root.find(f'{prefix}:Receptor', ns) or root.find('Receptor')
-        tfd = root.find('.//{http://www.sat.gob.mx/TimbreFiscalDigital}TimbreFiscalDigital')
-        impuestos = root.find(f'{prefix}:Impuestos', ns) or root.find('Impuestos')
-        fecha_str = attr(root, 'Fecha')
-        fecha = datetime.strptime(fecha_str[:10], '%Y-%m-%d').date() if fecha_str else None
-        iva = 0.0
-        if impuestos is not None:
-            traslados = impuestos.find(f'{prefix}:Traslados', ns) or impuestos.find('Traslados')
-            if traslados is not None:
-                for t in traslados:
-                    iva += float(t.get('Importe', 0))
-        concepto = ''
-        conceptos = root.find(f'{prefix}:Conceptos', ns) or root.find('Conceptos')
-        if conceptos is not None:
-            primer = list(conceptos)[0] if list(conceptos) else None
-            if primer is not None:
-                concepto = attr(primer, 'Descripcion') or attr(primer, 'descripcion', '')
-        return {
-            'folio': attr(root, 'Folio') or attr(root, 'Serie', '') + attr(root, 'Folio', ''),
-            'uuid_cfdi': attr(tfd, 'UUID') if tfd is not None else '',
-            'fecha_emision': fecha,
-            'rfc_emisor': attr(emisor, 'Rfc') or attr(emisor, 'RFC'),
-            'nombre_emisor': attr(emisor, 'Nombre'),
-            'rfc_receptor': attr(receptor, 'Rfc') or attr(receptor, 'RFC'),
-            'nombre_receptor': attr(receptor, 'Nombre'),
-            'subtotal': float(attr(root, 'SubTotal', 0)),
-            'iva': iva,
-            'total': float(attr(root, 'Total', 0)),
-            'moneda': attr(root, 'Moneda', 'MXN'),
-            'concepto': concepto,
-            'fuente': 'xml'
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-# ─── EXTRACCIÓN IA FACTURA ───────────────────────────────────────────────────
-
-def extraer_datos_ia(contenido_bytes, tipo_archivo, nombre_archivo):
-    try:
-        b64 = base64.standard_b64encode(contenido_bytes).decode('utf-8')
-        prompt = """Analiza esta factura mexicana y extrae UNICAMENTE un JSON con estos campos (sin texto adicional, sin ```):
-{"folio":"","uuid_cfdi":"","fecha_emision":"YYYY-MM-DD","rfc_emisor":"","nombre_emisor":"","rfc_receptor":"","nombre_receptor":"","concepto":"","subtotal":0.0,"iva":0.0,"total":0.0,"moneda":"MXN"}
-Si no encuentras un campo dejalo vacio o en 0. Fecha siempre YYYY-MM-DD."""
-        if tipo_archivo in ['jpg', 'jpeg', 'png']:
-            media_type = MIME_MAP.get(tipo_archivo, 'image/jpeg')
-            content = [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
-                {"type": "text", "text": prompt}
-            ]
-        else:
-            content = [
-                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
-                {"type": "text", "text": prompt}
-            ]
-        response = client.messages.create(
-            model='claude-haiku-4-5-20251001',
-            max_tokens=1000,
-            messages=[{"role": "user", "content": content}]
-        )
-        texto = response.content[0].text.strip().replace('```json', '').replace('```', '').strip()
-        datos = json.loads(texto)
-        if datos.get('fecha_emision'):
-            try:
-                datos['fecha_emision'] = datetime.strptime(datos['fecha_emision'][:10], '%Y-%m-%d').date()
-            except:
-                datos['fecha_emision'] = None
-        datos['fuente'] = 'ia'
-        return datos
-    except Exception as e:
-        return {'error': str(e)}
-
-# ─── GOOGLE DRIVE ────────────────────────────────────────────────────────────
-
-def get_drive_service():
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-        token_data = session.get('drive_token')
-        if not token_data:
-            return None
-        creds = Credentials(
-            token=token_data.get('access_token'),
-            refresh_token=token_data.get('refresh_token'),
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=os.environ.get('GOOGLE_CLIENT_ID'),
-            client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
-            scopes=['https://www.googleapis.com/auth/drive']
-        )
-        return build('drive', 'v3', credentials=creds)
-    except Exception:
-        return None
-
-def buscar_o_crear_carpeta(service, nombre, parent_id=None):
-    q = f"name='{nombre}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    if parent_id:
-        q += f" and '{parent_id}' in parents"
-    res = service.files().list(q=q, fields='files(id,name)').execute()
-    files = res.get('files', [])
-    if files:
-        return files[0]['id']
-    meta = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder'}
-    if parent_id:
-        meta['parents'] = [parent_id]
-    f = service.files().create(body=meta, fields='id').execute()
-    return f.get('id')
-
-def subir_archivo_drive(service, contenido_bytes, nombre_archivo, mime_type, folder_id):
-    from googleapiclient.http import MediaIoBaseUpload
-    meta = {'name': nombre_archivo, 'parents': [folder_id]}
-    media = MediaIoBaseUpload(io.BytesIO(contenido_bytes), mimetype=mime_type)
-    f = service.files().create(body=meta, media_body=media, fields='id,webViewLink').execute()
-    return f.get('id'), f.get('webViewLink', '')
-
-def organizar_factura_drive(service, factura, contenido_bytes, ext):
-    try:
-        root_id = os.environ.get('DRIVE_FOLDER_ID')
-        carpeta_facturas = buscar_o_crear_carpeta(service, 'Facturas', root_id)
-        anio_str = str(factura.anio) if factura.anio else 'Sin_Fecha'
-        carpeta_anio = buscar_o_crear_carpeta(service, anio_str, carpeta_facturas)
-        mes_str = MESES_NOMBRE[factura.mes] if factura.mes else 'Sin_Mes'
-        carpeta_mes = buscar_o_crear_carpeta(service, mes_str, carpeta_anio)
-        nombre = nombre_archivo_drive(factura, ext)
-        mime = MIME_MAP.get(ext, 'application/octet-stream')
-        file_id, link = subir_archivo_drive(service, contenido_bytes, nombre, mime, carpeta_mes)
-        factura.drive_folder_id = carpeta_mes
-        factura.drive_file_id = file_id
-        db.session.commit()
-        return {'ok': True, 'file_id': file_id, 'nombre': nombre, 'link': link}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)}
-
-# ─── OAUTH ───────────────────────────────────────────────────────────────────
-
-@app.route('/oauth/login')
-def oauth_login():
-    from urllib.parse import urlencode
-    params = {
-        'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
-        'redirect_uri': os.environ.get('OAUTH_REDIRECT', 'https://facturas.uptownliving.mx/oauth/callback'),
-        'response_type': 'code',
-        'scope': 'https://www.googleapis.com/auth/drive',
-        'access_type': 'offline',
-        'prompt': 'consent'
-    }
-    return redirect('https://accounts.google.com/o/oauth2/v2/auth?' + urlencode(params))
-
-@app.route('/oauth/callback')
-def oauth_callback():
-    import urllib.request, urllib.parse
-    code = request.args.get('code')
-    if not code:
-        return '<h2>Error: no se recibio codigo</h2>', 400
-    data = urllib.parse.urlencode({
-        'code': code,
-        'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
-        'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET'),
-        'redirect_uri': os.environ.get('OAUTH_REDIRECT', 'https://facturas.uptownliving.mx/oauth/callback'),
-        'grant_type': 'authorization_code'
-    }).encode()
-    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=data)
-    try:
-        with urllib.request.urlopen(req) as resp:
-            token_data = json.loads(resp.read().decode())
-        session['drive_token'] = token_data
-        return redirect('/?drive=ok')
-    except Exception as e:
-        return f'<h2>Error: {e}</h2>', 500
-
-@app.route('/oauth/logout')
-def oauth_logout():
-    session.pop('drive_token', None)
-    return redirect('/')
-
-@app.route('/api/drive/status')
-def drive_status():
-    return jsonify({'conectado': get_drive_service() is not None})
-
-@app.route('/api/drive/organizar-todas', methods=['POST'])
-def organizar_todas_drive():
-    service = get_drive_service()
-    if not service:
-        return jsonify({'error': 'Drive no autorizado'}), 401
-    usuario_id = request.json.get('usuario_id', 1)
-    facturas = Factura.query.filter_by(usuario_id=usuario_id).filter(
-        Factura.archivo_contenido.isnot(None), Factura.drive_file_id.is_(None)
-    ).all()
-    subidas = errores = 0
-    for f in facturas:
-        ext = f.archivo_tipo or 'pdf'
-        res = organizar_factura_drive(service, f, f.archivo_contenido, ext)
-        if res['ok']: subidas += 1
-        else: errores += 1
-    return jsonify({'subidas': subidas, 'errores': errores})
-
-# ─── RUTAS PRINCIPALES ───────────────────────────────────────────────────────
+CONTRATOS_FOLDER_ID = '194DT0gPMKvmpW-_g6mBcDxu4SUCI5YSH'
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+REDIRECT_URI = 'https://uptown-contratos-production.up.railway.app/oauth/callback'
+drive_tokens = {}
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return send_from_directory('.', 'index.html')
 
-@app.route('/api/usuarios', methods=['GET'])
-def get_usuarios():
-    return jsonify([{'id': u.id, 'nombre': u.nombre, 'email': u.email} for u in Usuario.query.all()])
+@app.route('/oauth/login')
+def oauth_login():
+    url = (f"https://accounts.google.com/o/oauth2/v2/auth"
+           f"?client_id={GOOGLE_CLIENT_ID}&redirect_uri={REDIRECT_URI}"
+           f"&response_type=code&scope=https://www.googleapis.com/auth/drive"
+           f"&access_type=offline&prompt=consent")
+    return redirect(url)
 
-@app.route('/api/usuarios', methods=['POST'])
-def crear_usuario():
-    data = request.json
-    if Usuario.query.filter_by(email=data['email']).first():
-        return jsonify({'error': 'Email ya registrado'}), 400
-    u = Usuario(nombre=data['nombre'], email=data['email'])
-    db.session.add(u); db.session.commit()
-    return jsonify({'id': u.id, 'nombre': u.nombre, 'email': u.email}), 201
-
-# ─── FACTURAS ────────────────────────────────────────────────────────────────
-
-@app.route('/api/facturas', methods=['GET'])
-def get_facturas():
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    q = request.args.get('q', '')
-    tipo = request.args.get('tipo', '')
-    mes = request.args.get('mes', type=int)
-    anio = request.args.get('anio', type=int)
-    estado = request.args.get('estado', '')
-    conciliada = request.args.get('conciliada')
-    query = Factura.query.filter_by(usuario_id=usuario_id)
-    if q:
-        like = f'%{q}%'
-        query = query.filter(db.or_(
-            Factura.folio.ilike(like), Factura.nombre_emisor.ilike(like),
-            Factura.nombre_receptor.ilike(like), Factura.rfc_emisor.ilike(like),
-            Factura.rfc_receptor.ilike(like), Factura.concepto.ilike(like)
-        ))
-    if tipo: query = query.filter_by(tipo=tipo)
-    if mes: query = query.filter_by(mes=mes)
-    if anio: query = query.filter_by(anio=anio)
-    if estado: query = query.filter_by(estado_pago=estado)
-    if conciliada is not None:
-        query = query.filter_by(conciliada=(conciliada == 'true'))
-    facturas = query.order_by(Factura.fecha_emision.desc()).all()
-    return jsonify([{
-        'id': f.id, 'folio': f.folio, 'uuid_cfdi': f.uuid_cfdi,
-        'fecha_emision': f.fecha_emision.isoformat() if f.fecha_emision else None,
-        'mes': f.mes, 'anio': f.anio,
-        'rfc_emisor': f.rfc_emisor, 'nombre_emisor': f.nombre_emisor,
-        'rfc_receptor': f.rfc_receptor, 'nombre_receptor': f.nombre_receptor,
-        'concepto': f.concepto, 'subtotal': f.subtotal, 'iva': f.iva,
-        'total': f.total, 'moneda': f.moneda, 'tipo': f.tipo,
-        'estado_pago': f.estado_pago, 'conciliada': f.conciliada,
-        'archivo_nombre': f.archivo_nombre, 'archivo_tipo': f.archivo_tipo,
-        'drive_file_id': f.drive_file_id, 'notas_ia': f.notas_ia,
-        'created_at': f.created_at.isoformat()
-    } for f in facturas])
-
-@app.route('/api/facturas', methods=['POST'])
-def subir_factura():
-    usuario_id = request.form.get('usuario_id', 1, type=int)
-    tipo = request.form.get('tipo', 'emitida')
-    if 'archivo' not in request.files:
-        return jsonify({'error': 'No se envio archivo'}), 400
-    archivo = request.files['archivo']
-    if not archivo.filename or not allowed_file(archivo.filename):
-        return jsonify({'error': 'Archivo no valido'}), 400
-    filename = secure_filename(archivo.filename)
-    ext = filename.rsplit('.', 1)[1].lower()
-    contenido = archivo.read()
-    if ext == 'xml':
-        datos = extraer_datos_xml(contenido.decode('utf-8', errors='ignore'))
-    else:
-        datos = extraer_datos_ia(contenido, ext, filename)
-    if 'error' in datos:
-        return jsonify({'error': f'Error extrayendo datos: {datos["error"]}'}), 422
-    fecha = datos.get('fecha_emision')
-    factura = Factura(
-        usuario_id=usuario_id, tipo=tipo,
-        folio=datos.get('folio', ''), uuid_cfdi=datos.get('uuid_cfdi', ''),
-        fecha_emision=fecha,
-        mes=fecha.month if fecha else None, anio=fecha.year if fecha else None,
-        rfc_emisor=datos.get('rfc_emisor', ''), nombre_emisor=datos.get('nombre_emisor', ''),
-        rfc_receptor=datos.get('rfc_receptor', ''), nombre_receptor=datos.get('nombre_receptor', ''),
-        concepto=datos.get('concepto', ''),
-        subtotal=datos.get('subtotal', 0), iva=datos.get('iva', 0), total=datos.get('total', 0),
-        moneda=datos.get('moneda', 'MXN'),
-        archivo_nombre=filename, archivo_tipo=ext, archivo_contenido=contenido,
-        notas_ia=f'Extraido por {"XML parser" if ext == "xml" else "IA (Claude)"}'
-    )
-    db.session.add(factura); db.session.commit()
-    service = get_drive_service()
-    drive_resultado = organizar_factura_drive(service, factura, contenido, ext) if service else None
-    return jsonify({
-        'id': factura.id, 'folio': factura.folio, 'total': factura.total,
-        'fecha_emision': factura.fecha_emision.isoformat() if factura.fecha_emision else None,
-        'nombre_emisor': factura.nombre_emisor, 'nombre_receptor': factura.nombre_receptor,
-        'tipo': factura.tipo, 'fuente_extraccion': datos.get('fuente', 'desconocida'),
-        'drive': drive_resultado
-    }), 201
-
-@app.route('/api/facturas/manual', methods=['POST'])
-def agregar_factura_manual():
-    data = request.json
-    fecha = None
-    if data.get('fecha_emision'):
-        try: fecha = datetime.strptime(data['fecha_emision'], '%Y-%m-%d').date()
-        except: pass
-    factura = Factura(
-        usuario_id=data.get('usuario_id', 1), folio=data.get('folio', ''),
-        fecha_emision=fecha, mes=fecha.month if fecha else None, anio=fecha.year if fecha else None,
-        rfc_emisor=data.get('rfc_emisor', ''), nombre_emisor=data.get('nombre_emisor', ''),
-        rfc_receptor=data.get('rfc_receptor', ''), nombre_receptor=data.get('nombre_receptor', ''),
-        concepto=data.get('concepto', ''),
-        subtotal=float(data.get('subtotal', 0)), iva=float(data.get('iva', 0)),
-        total=float(data.get('total', 0)), moneda=data.get('moneda', 'MXN'),
-        tipo=data.get('tipo', 'emitida'), archivo_tipo='manual', notas_ia='Ingreso manual'
-    )
-    db.session.add(factura); db.session.commit()
-    return jsonify({'id': factura.id, 'folio': factura.folio}), 201
-
-@app.route('/api/facturas/<int:factura_id>', methods=['DELETE'])
-def eliminar_factura(factura_id):
-    f = Factura.query.get_or_404(factura_id)
-    db.session.delete(f); db.session.commit()
-    return jsonify({'ok': True})
-
-# ─── MOVIMIENTOS ─────────────────────────────────────────────────────────────
-
-@app.route('/api/movimientos', methods=['GET'])
-def get_movimientos():
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    mes = request.args.get('mes', type=int)
-    anio = request.args.get('anio', type=int)
-    query = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
-    if mes: query = query.filter_by(mes=mes)
-    if anio: query = query.filter_by(anio=anio)
-    movs = query.order_by(MovimientoBancario.fecha.desc()).all()
-    return jsonify([{
-        'id': m.id, 'fecha': m.fecha.isoformat() if m.fecha else None,
-        'descripcion': m.descripcion, 'referencia': m.referencia,
-        'tipo': m.tipo, 'monto': m.monto, 'saldo': m.saldo,
-        'conciliado': m.conciliado, 'factura_id': m.factura_id
-    } for m in movs])
-
-@app.route('/api/movimientos', methods=['POST'])
-def agregar_movimiento():
-    data = request.json
-    fecha = None
-    if data.get('fecha'):
-        try: fecha = datetime.strptime(data['fecha'], '%Y-%m-%d').date()
-        except: pass
-    m = MovimientoBancario(
-        usuario_id=data.get('usuario_id', 1), fecha=fecha,
-        mes=fecha.month if fecha else None, anio=fecha.year if fecha else None,
-        descripcion=data.get('descripcion', ''), referencia=data.get('referencia', ''),
-        tipo=data.get('tipo', 'abono'), monto=float(data.get('monto', 0)),
-        saldo=float(data.get('saldo', 0)) if data.get('saldo') else None
-    )
-    db.session.add(m); db.session.commit()
-    return jsonify({'id': m.id}), 201
-
-@app.route('/api/movimientos/importar-csv', methods=['POST'])
-def importar_csv():
-    usuario_id = request.form.get('usuario_id', 1, type=int)
-    if 'archivo' not in request.files:
-        return jsonify({'error': 'No se envio archivo'}), 400
-    archivo = request.files['archivo']
-    contenido = archivo.read().decode('utf-8-sig', errors='ignore')
-    lineas = contenido.strip().split('\n')
-    importados = 0
-    for linea in lineas[1:]:
-        partes = linea.strip().split(',')
-        if len(partes) < 3: continue
-        try:
-            fecha_str = partes[0].strip().strip('"')
-            desc = partes[1].strip().strip('"')
-            monto_raw = float(partes[2].strip().strip('"').replace('$', '').replace(',', ''))
-            tipo = 'abono' if monto_raw >= 0 else 'cargo'
-            monto = abs(monto_raw)
-            saldo = float(partes[3].strip().strip('"').replace('$', '').replace(',', '')) if len(partes) > 3 else None
-            fecha = datetime.strptime(fecha_str[:10], '%Y-%m-%d').date()
-            m = MovimientoBancario(
-                usuario_id=usuario_id, fecha=fecha,
-                mes=fecha.month, anio=fecha.year,
-                descripcion=desc, tipo=tipo, monto=monto, saldo=saldo
-            )
-            db.session.add(m); importados += 1
-        except: continue
-    db.session.commit()
-    return jsonify({'importados': importados})
-
-# ─── ESTADOS DE CUENTA ───────────────────────────────────────────────────────
-
-@app.route('/api/estados-cuenta/subir', methods=['POST'])
-def subir_estado_cuenta():
-    usuario_id = request.form.get('usuario_id', 1, type=int)
-    mes = request.form.get('mes', type=int)
-    anio = request.form.get('anio', type=int)
-    banco = request.form.get('banco', 'Banco')
-    if 'archivo' not in request.files:
-        return jsonify({'error': 'No se envio archivo'}), 400
-    archivo = request.files['archivo']
-    if not archivo.filename:
-        return jsonify({'error': 'Archivo vacio'}), 400
-    filename = secure_filename(archivo.filename)
-    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'pdf'
-    contenido = archivo.read()
-    drive_resultado = None
-    service = get_drive_service()
-    if service:
-        try:
-            root_id = os.environ.get('DRIVE_FOLDER_ID')
-            carpeta_edos = buscar_o_crear_carpeta(service, 'Estados de Cuenta', root_id)
-            anio_str = str(anio) if anio else 'Sin_Anio'
-            carpeta_anio = buscar_o_crear_carpeta(service, anio_str, carpeta_edos)
-            mes_str = MESES_NOMBRE[mes] if mes and 1 <= mes <= 12 else 'Sin_Mes'
-            carpeta_mes = buscar_o_crear_carpeta(service, mes_str, carpeta_anio)
-            nombre_archivo = f"{limpiar_nombre(banco)}_{anio_str}-{str(mes).zfill(2) if mes else '00'}.{ext}"
-            mime = MIME_MAP.get(ext, 'application/octet-stream')
-            file_id, link = subir_archivo_drive(service, contenido, nombre_archivo, mime, carpeta_mes)
-            drive_resultado = {'ok': True, 'nombre': nombre_archivo, 'link': link}
-        except Exception as e:
-            drive_resultado = {'ok': False, 'error': str(e)}
-    return jsonify({'ok': True, 'filename': filename, 'drive': drive_resultado}), 201
-
-@app.route('/api/estados-cuenta/analizar-ia', methods=['POST'])
-def analizar_estado_cuenta_ia():
-    usuario_id = request.form.get('usuario_id', 1, type=int)
-    banco = request.form.get('banco', 'Banco')
-    if 'archivo' not in request.files:
-        return jsonify({'error': 'No se envio archivo'}), 400
-    archivo = request.files['archivo']
-    if not archivo.filename:
-        return jsonify({'error': 'Archivo vacio'}), 400
-    filename = secure_filename(archivo.filename)
-    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'pdf'
-    contenido = archivo.read()
-    try:
-        b64 = base64.standard_b64encode(contenido).decode('utf-8')
-        prompt = """Analiza este estado de cuenta bancario mexicano. Extrae DOS cosas:
-1) TODOS los movimientos de TODAS las tarjetas
-2) TODAS las compras a Meses Sin Intereses (MSI) de la tabla MSI si existe
-
-Responde UNICAMENTE con este JSON valido sin texto adicional ni explicaciones:
-{"banco":"nombre","periodo":"Abril 2026","saldo_inicial":0.0,"saldo_final":0.0,"movimientos":[{"fecha":"YYYY-MM-DD","descripcion":"comercio","tipo":"cargo","monto":0.0,"tarjetahabiente":"nombre"}],"msi":[{"descripcion":"comercio","monto_original":0.0,"mensualidad":0.0,"meses_total":12,"meses_pagados":4,"saldo_pendiente":0.0,"fecha_inicio":"YYYY-MM-DD"}]}
-
-MOVIMIENTOS - reglas:
-- tipo: cargo=compras/pagos, abono=pagos recibidos/devoluciones/cashback/domiciliacion
-- fecha en formato YYYY-MM-DD (13 mar 2026 = 2026-03-13)
-- monto siempre positivo sin simbolos
-- Incluye movimientos de titular Y tarjetas adicionales
-- NO incluyas subtotales
-
-MSI - reglas:
-- Extrae de la tabla Meses Sin Intereses si existe
-- meses_pagados: primer numero (4 de 12 = 4 pagados)
-- meses_total: segundo numero (4 de 12 = 12 total)
-- fecha_inicio: convierte mes abreviado: ene=01 feb=02 mar=03 abr=04 may=05 jun=06 jul=07 ago=08 sep=09 oct=10 nov=11 dic=12
-- Si no hay tabla MSI deja array vacio
-
-Responde SOLO el JSON"""
-        if ext in ['jpg', 'jpeg', 'png']:
-            media_type = MIME_MAP.get(ext, 'image/jpeg')
-            content_ia = [
-                {'type': 'image', 'source': {'type': 'base64', 'media_type': media_type, 'data': b64}},
-                {'type': 'text', 'text': prompt}
-            ]
-        else:
-            content_ia = [
-                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
-                {'type': 'text', 'text': prompt}
-            ]
-        response = client.messages.create(
-            model='claude-haiku-4-5-20251001',
-            max_tokens=8000,
-            messages=[{'role': 'user', 'content': content_ia}]
-        )
-        texto = response.content[0].text.strip().replace('```json', '').replace('```', '').strip()
-        datos = json.loads(texto)
-        # Guardar compras MSI si las hay
-        msi_guardadas = 0
-        for msi in datos.get('msi', []):
-            try:
-                fecha = None
-                if msi.get('fecha_inicio'):
-                    try: fecha = datetime.strptime(msi['fecha_inicio'][:10], '%Y-%m-%d').date()
-                    except: pass
-                # Convertir mes abreviado si es necesario
-                comp = ComprasMSI(
-                    usuario_id=usuario_id,
-                    descripcion=msi.get('descripcion', ''),
-                    monto_original=float(msi.get('monto_original', 0)),
-                    mensualidad=float(msi.get('mensualidad', 0)),
-                    meses_total=int(msi.get('meses_total', 0)),
-                    meses_pagados=int(msi.get('meses_pagados', 0)),
-                    saldo_pendiente=float(msi.get('saldo_pendiente', 0)),
-                    fecha_inicio=fecha,
-                    banco=banco
-                )
-                db.session.add(comp)
-                msi_guardadas += 1
-            except: pass
-        if msi_guardadas > 0:
-            db.session.commit()
-
-        movimientos_guardados = errores = 0
-        for mov in datos.get('movimientos', []):
-            try:
-                fecha = None
-                if mov.get('fecha'):
-                    try: fecha = datetime.strptime(mov['fecha'][:10], '%Y-%m-%d').date()
-                    except: pass
-                m = MovimientoBancario(
-                    usuario_id=usuario_id, fecha=fecha,
-                    mes=fecha.month if fecha else None, anio=fecha.year if fecha else None,
-                    descripcion=mov.get('descripcion', ''),
-                    tipo=mov.get('tipo', 'cargo'),
-                    monto=float(mov.get('monto', 0)),
-                    saldo=float(mov.get('saldo', 0)) if mov.get('saldo') else None,
-                    referencia=f"{banco} - {mov.get('tarjetahabiente', '')}"
-                )
-                db.session.add(m); movimientos_guardados += 1
-            except: errores += 1
-        db.session.commit()
-        drive_resultado = None
-        service = get_drive_service()
-        if service:
-            try:
-                root_id = os.environ.get('DRIVE_FOLDER_ID')
-                carpeta_edos = buscar_o_crear_carpeta(service, 'Estados de Cuenta', root_id)
-                periodo = datos.get('periodo', 'Sin_Periodo').replace(' ', '_')
-                carpeta_periodo = buscar_o_crear_carpeta(service, periodo, carpeta_edos)
-                nombre_drive = f"{limpiar_nombre(datos.get('banco', banco))}_{periodo}.{ext}"
-                mime = MIME_MAP.get(ext, 'application/octet-stream')
-                file_id, link = subir_archivo_drive(service, contenido, nombre_drive, mime, carpeta_periodo)
-                drive_resultado = {'ok': True, 'nombre': nombre_drive, 'link': link}
-            except Exception as e:
-                drive_resultado = {'ok': False, 'error': str(e)}
-        return jsonify({
-            'ok': True,
-            'banco': datos.get('banco', banco),
-            'periodo': datos.get('periodo', ''),
-            'saldo_inicial': datos.get('saldo_inicial', 0),
-            'saldo_final': datos.get('saldo_final', 0),
-            'movimientos_extraidos': len(datos.get('movimientos', [])),
-            'movimientos_guardados': movimientos_guardados,
-            'msi_guardadas': msi_guardadas,
-            'pago_mensual_msi': sum(float(m.get('mensualidad',0)) for m in datos.get('msi',[])),
-            'drive': drive_resultado
-        }), 201
-    except Exception as e:
-        return jsonify({'error': f'Error analizando: {str(e)}'}), 422
-
-# ─── CONCILIACIÓN ────────────────────────────────────────────────────────────
-
-def conciliar_automatico(usuario_id):
-    facturas = Factura.query.filter_by(usuario_id=usuario_id, conciliada=False).all()
-    movimientos = MovimientoBancario.query.filter_by(usuario_id=usuario_id, conciliado=False).all()
-    conciliados = 0
-    for f in facturas:
-        tipo_mov = 'abono' if f.tipo == 'emitida' else 'cargo'
-        mejor_match = None
-        mejor_diff = float('inf')
-        for m in movimientos:
-            if m.tipo != tipo_mov: continue
-            if f.fecha_emision and m.fecha:
-                if abs((f.fecha_emision - m.fecha).days) > 60: continue
-            diff = abs(m.monto - f.total)
-            if diff <= f.total * 0.02 and diff < mejor_diff:
-                mejor_diff = diff; mejor_match = m
-        if mejor_match:
-            f.conciliada = True; f.movimiento_id = mejor_match.id; f.estado_pago = 'pagada'
-            mejor_match.conciliado = True; mejor_match.factura_id = f.id
-            movimientos.remove(mejor_match); conciliados += 1
-    db.session.commit()
-    return conciliados
-
-@app.route('/api/conciliar', methods=['POST'])
-def conciliar():
-    n = conciliar_automatico(request.json.get('usuario_id', 1))
-    return jsonify({'conciliados': n})
-
-@app.route('/api/conciliacion/resumen')
-def resumen_conciliacion():
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    mes = request.args.get('mes', type=int)
-    anio = request.args.get('anio', type=int)
-    q = Factura.query.filter_by(usuario_id=usuario_id)
-    if mes: q = q.filter_by(mes=mes)
-    if anio: q = q.filter_by(anio=anio)
-    facturas = q.all()
-    emitidas = [f for f in facturas if f.tipo == 'emitida']
-    recibidas = [f for f in facturas if f.tipo == 'recibida']
-    total_emitido = sum(f.total for f in emitidas)
-    total_recibido = sum(f.total for f in recibidas)
-    return jsonify({
-        'total_facturas': len(facturas),
-        'emitidas': len(emitidas), 'recibidas': len(recibidas),
-        'conciliadas': sum(1 for f in facturas if f.conciliada),
-        'pendientes': sum(1 for f in facturas if not f.conciliada),
-        'total_emitido': total_emitido, 'total_recibido': total_recibido,
-        'total_cobrado': sum(f.total for f in emitidas if f.conciliada),
-        'total_pagado': sum(f.total for f in recibidas if f.conciliada),
-        'por_cobrar': sum(f.total for f in emitidas if not f.conciliada),
-        'por_pagar': sum(f.total for f in recibidas if not f.conciliada),
-        'balance': total_emitido - total_recibido
+@app.route('/oauth/callback')
+def oauth_callback():
+    code = request.args.get('code')
+    if not code:
+        return "Error", 400
+    resp = requests.post('https://oauth2.googleapis.com/token', data={
+        'code': code, 'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'redirect_uri': REDIRECT_URI, 'grant_type': 'authorization_code'
     })
+    tokens = resp.json()
+    if 'access_token' in tokens:
+        drive_tokens['access_token'] = tokens['access_token']
+        drive_tokens['refresh_token'] = tokens.get('refresh_token', '')
+        return '''<html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#1e1e1e;color:#efefef">
+        <h2 style="color:#E18F00">✓ Google Drive autorizado correctamente</h2>
+        <p>Ya puedes cerrar esta ventana.</p>
+        <script>setTimeout(()=>window.close(),3000)</script></body></html>'''
+    return f"Error: {tokens}", 400
 
-# ─── EXPORTAR EXCEL ──────────────────────────────────────────────────────────
-
-@app.route('/api/exportar/excel')
-def exportar_excel():
-    try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        from openpyxl.utils import get_column_letter
-    except ImportError:
-        return jsonify({'error': 'openpyxl no instalado'}), 500
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    mes = request.args.get('mes', type=int)
-    anio = request.args.get('anio', type=int)
-    q = Factura.query.filter_by(usuario_id=usuario_id)
-    if mes: q = q.filter_by(mes=mes)
-    if anio: q = q.filter_by(anio=anio)
-    facturas = q.order_by(Factura.fecha_emision).all()
-    qm = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
-    if mes: qm = qm.filter_by(mes=mes)
-    if anio: qm = qm.filter_by(anio=anio)
-    movimientos = qm.order_by(MovimientoBancario.fecha).all()
-    wb = openpyxl.Workbook()
-    hdr_font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-    center = Alignment(horizontal='center', vertical='center')
-    thin = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
-    fill_ok = PatternFill('solid', start_color='FFF3E0', end_color='FFF3E0')
-    fill_warn = PatternFill('solid', start_color='FAEEDA', end_color='FAEEDA')
-    fill_danger = PatternFill('solid', start_color='FCEBEB', end_color='FCEBEB')
-    orange_fill = PatternFill('solid', start_color='E18F00', end_color='E18F00')
-    dark_fill = PatternFill('solid', start_color='393939', end_color='393939')
-    def set_header(ws, headers, fill):
-        ws.append(headers)
-        for cell in ws[1]:
-            cell.font = hdr_font; cell.fill = fill; cell.alignment = center; cell.border = thin
-    emitidas = [f for f in facturas if f.tipo == 'emitida']
-    recibidas = [f for f in facturas if f.tipo == 'recibida']
-    ws_res = wb.active; ws_res.title = 'Resumen'
-    ws_res['A1'] = 'UPTOWN — REPORTE DE CONCILIACION'
-    ws_res['A1'].font = Font(name='Arial', bold=True, size=14, color='E18F00')
-    ws_res['A2'] = f'Periodo: {MESES_NOMBRE[mes] if mes else "Todo"} {anio or ""}'
-    ws_res['A3'] = f'Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}'
-    ws_res.append(['', '', ''])
-    ws_res.append(['CONCEPTO', 'CANTIDAD', 'MONTO'])
-    for cell in ws_res[5]: cell.font = hdr_font; cell.fill = orange_fill; cell.alignment = center
-    for row in [
-        ['Total facturas emitidas', len(emitidas), sum(f.total for f in emitidas)],
-        ['Total facturas recibidas', len(recibidas), sum(f.total for f in recibidas)],
-        ['Facturas conciliadas', sum(1 for f in facturas if f.conciliada), sum(f.total for f in facturas if f.conciliada)],
-        ['Por cobrar', sum(1 for f in emitidas if not f.conciliada), sum(f.total for f in emitidas if not f.conciliada)],
-        ['Por pagar', sum(1 for f in recibidas if not f.conciliada), sum(f.total for f in recibidas if not f.conciliada)],
-        ['BALANCE NETO', '', sum(f.total for f in emitidas) - sum(f.total for f in recibidas)],
-    ]: ws_res.append(row)
-    for row in ws_res.iter_rows(min_row=6, max_row=11):
-        for cell in row:
-            cell.border = thin
-            if cell.column == 3 and isinstance(cell.value, (int, float)): cell.number_format = '"$"#,##0.00'
-    for cell in ws_res[11]: cell.font = Font(name='Arial', bold=True, color='FFFFFF'); cell.fill = dark_fill
-    ws_res.column_dimensions['A'].width = 32; ws_res.column_dimensions['B'].width = 14; ws_res.column_dimensions['C'].width = 18
-    ws_fac = wb.create_sheet('Facturas')
-    set_header(ws_fac, ['Folio','Fecha','Tipo','Emisor','RFC Emisor','Receptor','RFC Receptor','Concepto','Subtotal','IVA','Total','Moneda','Estado','Conciliada','En Drive'], orange_fill)
-    for f in facturas:
-        ws_fac.append([f.folio, f.fecha_emision, f.tipo, f.nombre_emisor, f.rfc_emisor, f.nombre_receptor, f.rfc_receptor, f.concepto, f.subtotal, f.iva, f.total, f.moneda, f.estado_pago, 'Si' if f.conciliada else 'No', 'Si' if f.drive_file_id else 'No'])
-        last = ws_fac.max_row
-        fill = fill_ok if f.conciliada else (fill_warn if f.estado_pago == 'pendiente' else fill_danger)
-        for cell in ws_fac[last]: cell.border = thin; cell.fill = fill
-        for col in [9, 10, 11]: ws_fac.cell(last, col).number_format = '"$"#,##0.00'
-    for i, w in enumerate([10,12,10,30,15,30,15,35,14,14,14,8,12,10,10], 1): ws_fac.column_dimensions[get_column_letter(i)].width = w
-    ws_edo = wb.create_sheet('Estado de Cuenta')
-    set_header(ws_edo, ['Fecha','Descripcion','Referencia','Tipo','Monto','Saldo','Conciliado','Factura ID'], dark_fill)
-    for m in movimientos:
-        ws_edo.append([m.fecha, m.descripcion, m.referencia, m.tipo, m.monto, m.saldo, 'Si' if m.conciliado else 'No', m.factura_id or ''])
-        last = ws_edo.max_row
-        for cell in ws_edo[last]: cell.border = thin; cell.fill = fill_ok if m.conciliado else fill_warn
-        ws_edo.cell(last, 5).number_format = '"$"#,##0.00'
-    for i, w in enumerate([12,40,20,10,14,14,12,12], 1): ws_edo.column_dimensions[get_column_letter(i)].width = w
-    ws_con = wb.create_sheet('Conciliacion')
-    set_header(ws_con, ['Folio','Fecha','Empresa','Tipo','Total Factura','Monto Banco','Diferencia','Estado'], orange_fill)
-    for f in facturas:
-        mov = f.movimiento
-        monto_banco = mov.monto if mov else 0
-        diff = monto_banco - f.total if mov else -f.total
-        estado = 'Conciliada' if f.conciliada else ('Sin cobro' if f.tipo == 'emitida' else 'Sin pago')
-        empresa = f.nombre_emisor if f.tipo == 'recibida' else f.nombre_receptor
-        ws_con.append([f.folio, f.fecha_emision, empresa, f.tipo, f.total, monto_banco or '', diff if mov else '', estado])
-        last = ws_con.max_row
-        fill = fill_ok if f.conciliada else (fill_warn if f.tipo == 'recibida' else fill_danger)
-        for cell in ws_con[last]: cell.border = thin; cell.fill = fill
-        for col in [5, 6, 7]:
-            if ws_con.cell(last, col).value != '': ws_con.cell(last, col).number_format = '"$"#,##0.00'
-    for i, w in enumerate([14,14,32,10,16,16,14,14], 1): ws_con.column_dimensions[get_column_letter(i)].width = w
-    for ws in [ws_fac, ws_edo, ws_con]: ws.freeze_panes = 'A2'
-    output = io.BytesIO()
-    wb.save(output); output.seek(0)
-    nombre = f'uptown_conciliacion_{anio or "all"}_{mes or "all"}.xlsx'
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nombre)
-
-# ─── INIT ────────────────────────────────────────────────────────────────────
-
-_db_initialized = False
-
-@app.before_request
-def init_db_once():
-    global _db_initialized
-    if not _db_initialized:
+def get_drive_token():
+    if not drive_tokens.get('access_token'):
+        return None
+    if drive_tokens.get('refresh_token'):
         try:
-            db.create_all()
-            if not Usuario.query.first():
-                db.session.add(Usuario(nombre='Admin', email='admin@empresa.com'))
-                db.session.commit()
-            _db_initialized = True
-        except Exception as e:
-            print(f'DB init error: {e}')
+            resp = requests.post('https://oauth2.googleapis.com/token', data={
+                'refresh_token': drive_tokens['refresh_token'],
+                'client_id': GOOGLE_CLIENT_ID,
+                'client_secret': GOOGLE_CLIENT_SECRET,
+                'grant_type': 'refresh_token'
+            })
+            t = resp.json()
+            if 'access_token' in t:
+                drive_tokens['access_token'] = t['access_token']
+        except:
+            pass
+    return drive_tokens.get('access_token')
+
+def crear_carpeta_drive(nombre, parent_id, token):
+    h = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    b = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_id]}
+    r = requests.post('https://www.googleapis.com/drive/v3/files', headers=h, json=b)
+    return r.json().get('id')
+
+def subir_archivo_drive(filepath, folder_id, token):
+    mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    boundary = 'uptown_bnd'
+    with open(filepath, 'rb') as f:
+        content = f.read()
+    meta = json.dumps({'name': os.path.basename(filepath), 'parents': [folder_id]}).encode()
+    body = (f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'.encode()
+            + meta + f'\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n'.encode()
+            + content + f'\r\n--{boundary}--'.encode())
+    h = {'Authorization': f'Bearer {token}', 'Content-Type': f'multipart/related; boundary={boundary}'}
+    r = requests.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', headers=h, data=body)
+    print(f"Subido {os.path.basename(filepath)}: {r.status_code}")
+    return r.json().get('id')
+
+def unpack_docx(src, out_dir):
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    with zipfile.ZipFile(str(src), 'r') as z:
+        z.extractall(out_dir)
+
+def pack_docx(src_dir, out_path):
+    with zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(src_dir):
+            for f in files:
+                fp = os.path.join(root, f)
+                z.write(fp, os.path.relpath(fp, src_dir))
+
+def replace_xml(xml_path, reemplazos):
+    with open(xml_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    for old, new in reemplazos.items():
+        if old and old in content:
+            content = content.replace(old, str(new))
+    with open(xml_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+def parse_fecha(s):
+    if not s:
+        return '', '', ''
+    s2 = s.replace(' del ', ' de ')
+    p = s2.split(' de ')
+    return (p[0].strip(), p[1].strip(), p[2].strip()) if len(p) >= 3 else ('', '', '')
+
+def depto_parts(depto):
+    d = str(depto)
+    if len(d) >= 2:
+        return d[:-1], d[-1]
+    return d, ''
+
+def generar_contrato(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'contrato')
+    unpack_docx(DOCS_BASE['contrato'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+
+    nivel = c.get('nivel', '').lower().strip()
+    dia_ap, mes_ap, _ = parse_fecha(c.get('fechaApartado', ''))
+    _, mes_en, _ = parse_fecha(c.get('fechaEnganche', ''))
+    dia_fi, mes_fi, anio_fi = parse_fecha(c.get('fechaFiniquito', ''))
+    dia_co, mes_co, anio_co = parse_fecha(c.get('fechaContrato', ''))
+
+    eng_l = c.get('engancheLetra', '').replace(' pesos 00/100 M.N.', '').strip().split()
+    fin_l = c.get('finiquitoLetra', '').replace(' pesos 00/100 M.N.', '').strip().split()
+    pre_l = c.get('precioLetra', '').replace(' pesos 00/100 M.N.', '').strip()
+
+    eng_num = str(c.get('enganche', '350000')).replace(',', '').replace('.', '')
+    pre_num = str(c.get('precio', '3500000')).replace(',', '').replace('.', '')
+    fin_num = str(c.get('finiquito', '3130000')).replace(',', '').replace('.', '')
+
+    d1, d2 = depto_parts(c['depto'])
+
+    nombre = c['nombre'].strip()
+    if nombre.startswith('C ') or nombre.startswith('c '):
+        nombre = nombre[2:]
+    nombre_inv = c.get('nombreInvertido', nombre).strip()
+
+    reemplazos = {
+        'JUAN CARLOS CORDOBA MANZANARES': nombre,
+        'JUAN CARLOS MANZANARES CORDOBA': nombre_inv,
+        'MACJ820316HDFNRN09': c.get('curp', ''),
+        'MACJ820316DZ5': c.get('rfc', '') or 'SIN RFC',
+        'Credencial para Votar No.2169312321': f"Credencial para Votar No.{c.get('ine', '')}",
+        '>60<': f'>{c["depto"]}<',  # Full depto number in declarations
+        '>603<': f'>{c["depto"]}<',
+        'ubicado en el nivel s': f'ubicado en el nivel {nivel[0]}' if nivel else 'ubicado en el nivel ',
+        '>exto<': f'>{nivel[1:]}<' if len(nivel) > 1 else '><',
+        '>70 <': f'>{c.get("m2", "70")} <',
+        '>70<': f'>{c.get("m2", "70")}<',
+        '>50<': f'>{pre_num[1:3] if len(pre_num) > 2 else "50"}<',
+        '>MILLONES QUINIENTOS MIL<': f'>{pre_l.upper()}<',
+        '>26<': f'>{dia_ap}<',
+        '>Febrero<': f'>{mes_ap}<',
+        '>3<': f'>{eng_num[0] if eng_num else "3"}<',
+        '>5<': f'>{eng_num[1] if len(eng_num) > 1 else "5"}<',
+        '>0,000<': f'>{eng_num[2:] if len(eng_num) > 2 else "0,000"}<',
+        '>Trescientos<': f'>{eng_l[0].capitalize()}<' if eng_l else '>Trescientos<',
+        '>cincuenta <': f'>{" ".join(eng_l[1:3])} <' if len(eng_l) > 1 else '>cincuenta <',
+        '>Marzo<': f'>{mes_en}<',
+        '>13<': f'>{fin_num[1:3] if len(fin_num) > 2 else "13"}<',
+        '>Tres<': f'>{fin_l[0].capitalize()}<' if fin_l else '>Tres<',
+        '> millones <': f'> {fin_l[1]} <' if len(fin_l) > 1 else '> millones <',
+        '>ciento treinta<': f'>{" ".join(fin_l[2:4])}<' if len(fin_l) > 2 else '>ciento treinta<',
+        '>junio<': f'>{mes_fi}<',
+        '>1<': f'>{dia_fi[0] if dia_fi else "1"}<',
+        '>8<': f'>{dia_fi[1] if len(dia_fi) > 1 else "8"}<',
+        '>8 <': f'>{dia_fi[1] if len(dia_fi) > 1 else "8"} <',
+        '18 de ': f'{dia_co} de ',
+        '>Junio<': f'>{mes_co}<',
+        '>C<': '><',
+        'Campeche 315 Colonia Condesa C.P. 06100 Ciudad de México': 'Av. Magdalena 507, Col. del Valle Centro, Benito Juarez, 03100 Ciudad de Mexico CDMX',
+        'ol. Santa Maria, LA RIBERA 06400, ': f'{c.get("domicilio", "")} ',
+        'cuahutemoc': '',
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"1_Contrato_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_apartado(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'apartado')
+    unpack_docx(DOCS_BASE['apartado'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    dia_ap, mes_ap, anio_ap = parse_fecha(c.get('fechaApartado', ''))
+    reemplazos = {
+        'a _____': f'a {dia_ap}',
+        '>____________<': f'>{mes_ap}<',
+        '>202<': f'>{anio_ap}<' if anio_ap else '>202<',
+        # Nombre del comprador (campo de texto largo)
+        '____________________________________': nombre,
+        # Monto en letra - reemplazar el campo entre paréntesis
+        '(_____________________________________': '(Veinte mil pesos 00/100 M.N.',
+        # Segundo campo de depto al final
+        'del departamento no.': f'del departamento no.',
+        '. _______': f'. {c["depto"]}',
+        '>______<': f'>{c["depto"]}<',
+        # Segundo campo depto al final del documento
+        'departamento no.</w:t></w:r>': f'departamento no.</w:t></w:r>',
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"2_Apartado_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_acta(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'acta')
+    unpack_docx(DOCS_BASE['acta'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    fecha = c.get('fechaEntrega', c.get('fechaContrato', ''))
+    dia_e, mes_e, anio_e = parse_fecha(fecha)
+    d1, d2 = depto_parts(c['depto'])
+    reemplazos = {
+        'Ciudad de México a ___': f'Ciudad de México a {dia_e}',
+        '>____________<': f'>{mes_e}<',
+        '>20<': f'>{anio_e[:2] if anio_e else "20"}<',
+        '>21<': f'>{anio_e[2:] if len(anio_e) > 2 else "26"}<',
+        '>10<': f'>{d1}<',
+        '>2<': f'>{d2}<',
+        'Nombre y Firma': nombre,
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"3_Acta_Entrega_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_poliza(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'poliza')
+    unpack_docx(DOCS_BASE['poliza'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    dia_co, mes_co, anio_co = parse_fecha(c.get('fechaContrato', ''))
+    d1, d2 = depto_parts(c['depto'])
+    reemplazos = {
+        '____________________________________________________': nombre,
+        '>10<': f'>{d1}<',
+        '>2<': f'>{d2}<',
+        '___ del mes de ______________ del año _________': f'{dia_co} de {mes_co} del {anio_co}',
+        '\u201cEL CLIENTE\u201d': nombre,
+        'Nombre: _________________________________         Departamento: ______________________': f'Nombre: {nombre}         Departamento: {c["depto"]}',
+        'Fecha: __________________________________         Teléfono: ___________________________': f'Fecha: {c.get("fechaEntrega", c.get("fechaContrato",""))}         Teléfono: ___________________________',
+        'Ciudad de México, a ____ de __________________ del ____________.': f'Ciudad de México, a {c.get("fechaContrato", "")}.',
+        '___ DEL MES DE ____ DEL AÑO_____.': f'{c.get("fechaContrato", "")}.',
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"4_Poliza_Garantia_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_responsiva(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'responsiva')
+    unpack_docx(DOCS_BASE['responsiva'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    d1, d2 = depto_parts(c['depto'])
+    reemplazos = {'>10<': f'>{d1}<', '>2<': f'>{d2}<'}
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"5_Responsiva_Mudanza_Depto{c['depto']}_{c['nombre'].replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_reporte(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'reporte')
+    unpack_docx(DOCS_BASE['reporte'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    d1, d2 = depto_parts(c['depto'])
+    reemplazos = {'>10<': f'>{d1}<', '>2<': f'>{d2}<'}
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"6_Reporte_Reparacion_Depto{c['depto']}_{c['nombre'].replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_aviso(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'aviso')
+    unpack_docx(DOCS_BASE['aviso'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    fecha_entrega = c.get('fechaEntrega', c.get('fechaContrato', ''))
+    _, mes_e, anio_e = parse_fecha(fecha_entrega)
+    dia_ent, mes_ent, anio_ent = parse_fecha(fecha_entrega)
+    reemplazos = {
+        # Fecha del aviso: "CDMX 15 DE MAYO DEL 2026"
+        'CDMX 15 DE MAYO DEL 2026': f'CDMX {dia_ent.upper()} DE {mes_ent.upper()} DEL {anio_ent}' if dia_ent else 'CDMX',
+        'Lety / Fer': nombre,
+        'no. 604': f'no. {c["depto"]}',
+        'junio del 2026': f'{mes_e} del {anio_e}' if mes_e else 'junio del 2026',
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"7_Aviso_Mantenimiento_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_cfe(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'cfe')
+    unpack_docx(DOCS_BASE['cfe'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    reemplazos = {
+        'Hola!!!': f'Hola {nombre}!!!',
+        '(tu # de depto.)': c['depto'],
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"8_Requisitos_CFE_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+def generar_bienvenida(c, tmp_dir):
+    out_dir = os.path.join(tmp_dir, 'bienvenida')
+    unpack_docx(DOCS_BASE['bienvenida'], out_dir)
+    xml = os.path.join(out_dir, 'word', 'document.xml')
+    nombre = c['nombre'].strip()
+    dia_co, mes_co, anio_co = parse_fecha(c.get('fechaContrato', ''))
+    reemplazos = {
+        'Gabriel y Esmeralda': nombre,
+        '20 MARZO 2024': f'{dia_co} DE {mes_co.upper()} DE {anio_co}' if dia_co else '20 MARZO 2024',
+    }
+    replace_xml(xml, reemplazos)
+    out = os.path.join(tmp_dir, f"9_Bienvenida_Depto{c['depto']}_{nombre.replace(' ','_')}.docx")
+    pack_docx(out_dir, out)
+    return out
+
+@app.route('/api/leer-ine', methods=['POST'])
+def leer_ine():
+    try:
+        data = request.json
+        client = anthropic.Anthropic()
+        media_type = data['mediaType']
+        is_pdf = 'pdf' in media_type.lower()
+
+        if is_pdf:
+            content_block = {
+                'type': 'document',
+                'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': data['image']}
+            }
+        else:
+            content_block = {
+                'type': 'image',
+                'source': {'type': 'base64', 'media_type': media_type, 'data': data['image']}
+            }
+
+        response = client.messages.create(
+            model='claude-sonnet-4-5',
+            max_tokens=500,
+            messages=[{'role': 'user', 'content': [
+                content_block,
+                {'type': 'text', 'text': 'Analiza esta credencial INE mexicana. Responde SOLO JSON sin backticks:\n{"nombre":"NOMBRE(S) APELLIDO1 APELLIDO2 en mayusculas","curp":"CURP 18 chars","rfc":"RFC o vacio","ine":"clave de elector","domicilio":"domicilio completo","fechaNac":"DD/MM/YYYY"}'}
+            ]}]
+        )
+        text = ''.join(b.text for b in response.content if hasattr(b, 'text'))
+        return jsonify(json.loads(re.sub(r'```json|```', '', text).strip()))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generar', methods=['POST'])
+def generar():
+    try:
+        c = request.json
+        tmp = tempfile.mkdtemp()
+        try:
+            archivos = [
+                generar_contrato(c, tmp),
+                generar_apartado(c, tmp),
+                generar_acta(c, tmp),
+                generar_poliza(c, tmp),
+                generar_responsiva(c, tmp),
+                generar_reporte(c, tmp),
+                generar_aviso(c, tmp),
+                generar_cfe(c, tmp),
+                generar_bienvenida(c, tmp),
+            ]
+            token = get_drive_token()
+            if not token:
+                return jsonify({'error': 'Drive no autorizado. Ve a /oauth/login primero.'}), 401
+            folder_id = crear_carpeta_drive(f"Depto-{c['depto']} - {c['nombre']}", CONTRATOS_FOLDER_ID, token)
+            upload_to = folder_id or CONTRATOS_FOLDER_ID
+            for a in archivos:
+                subir_archivo_drive(a, upload_to, token)
+            return jsonify({'ok': True, 'folderUrl': f"https://drive.google.com/drive/folders/{upload_to}"})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
-
-# ─── MSI ROUTES ──────────────────────────────────────────────────────────────
-
-@app.route('/api/msi', methods=['GET'])
-def get_msi():
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    solo_activas = request.args.get('activas', 'true') == 'true'
-    query = ComprasMSI.query.filter_by(usuario_id=usuario_id)
-    if solo_activas:
-        query = query.filter_by(activa=True)
-    compras = query.order_by(ComprasMSI.fecha_inicio.desc()).all()
-    return jsonify([{
-        'id': c.id,
-        'descripcion': c.descripcion,
-        'monto_original': c.monto_original,
-        'mensualidad': c.mensualidad,
-        'meses_total': c.meses_total,
-        'meses_pagados': c.meses_pagados,
-        'meses_restantes': c.meses_total - c.meses_pagados,
-        'saldo_pendiente': c.saldo_pendiente,
-        'fecha_inicio': c.fecha_inicio.isoformat() if c.fecha_inicio else None,
-        'banco': c.banco,
-        'activa': c.activa,
-        'porcentaje_pagado': round((c.meses_pagados / c.meses_total * 100) if c.meses_total else 0, 1)
-    } for c in compras])
-
-@app.route('/api/msi/resumen', methods=['GET'])
-def resumen_msi():
-    usuario_id = request.args.get('usuario_id', 1, type=int)
-    compras = ComprasMSI.query.filter_by(usuario_id=usuario_id, activa=True).all()
-    total_deuda = sum(c.saldo_pendiente for c in compras)
-    pago_mensual = sum(c.mensualidad for c in compras)
-    return jsonify({
-        'compras_activas': len(compras),
-        'total_deuda_msi': total_deuda,
-        'pago_mensual_msi': pago_mensual,
-        'detalle': [{
-            'descripcion': c.descripcion,
-            'mensualidad': c.mensualidad,
-            'saldo_pendiente': c.saldo_pendiente,
-            'meses_restantes': c.meses_total - c.meses_pagados
-        } for c in compras]
-    })
+    print("Uptown Living - http://localhost:5000")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
