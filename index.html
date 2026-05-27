@@ -3,1865 +3,333 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Uptown — Gestión de Facturas</title>
+<title>Uptown — Generador de Contratos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg: #242424;
-  --surface: #2e2e2e;
-  --surface2: #393939;
-  --border: rgba(255,255,255,0.07);
-  --border2: rgba(255,255,255,0.14);
-  --text: #efefef;
-  --muted: #a09080;
-  --accent: #e18f00;
-  --accent2: #f5a623;
-  --danger: #f07070;
-  --info: #85B7EB;
-  --purple: #c4b89a;
-  --font-head: 'Barlow Condensed', sans-serif;
-  --font-body: 'Barlow', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-  --r: 8px;
-  --r-lg: 14px;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.6;
-  min-height: 100vh;
-}
-
-/* ── LAYOUT ── */
-.layout { display: flex; min-height: 100vh; }
-
-.sidebar {
-  width: 220px;
-  min-width: 220px;
-  background: #1e1e1e;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  position: fixed;
-  top: 0; left: 0; bottom: 0;
-  z-index: 100;
-}
-
-.sidebar-logo {
-  padding: 22px 20px 18px;
-  border-bottom: 2px solid var(--accent);
-}
-
-.logo-mark {
-  font-family: var(--font-head);
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--accent);
-  letter-spacing: 0.06em;
-  line-height: 1;
-}
-
-.logo-sub {
-  font-size: 9px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  letter-spacing: 0.1em;
-  margin-top: 2px;
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav-section {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.08em;
-  padding: 12px 8px 6px;
-  text-transform: uppercase;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--r);
-  cursor: pointer;
-  font-size: 13.5px;
-  color: var(--muted);
-  transition: all 0.15s;
-  border: none;
-  background: none;
-  width: 100%;
-  text-align: left;
-}
-
-.nav-item:hover { background: var(--surface2); color: var(--text); }
-.nav-item.active { background: rgba(225,143,0,0.12); color: var(--accent); border-left: 2px solid var(--accent); padding-left: 10px; }
-.nav-item .icon { font-size: 16px; opacity: 0.8; }
-
-.sidebar-footer {
-  padding: 16px 12px;
-  border-top: 1px solid var(--border);
-}
-
-.user-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--surface2);
-  border-radius: var(--r);
-}
-
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #e18f00, #f5a623);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-head);
-  font-size: 11px;
-  font-weight: 700;
-  color: #1a0e00;
-  flex-shrink: 0;
-}
-
-.user-name { font-size: 12.5px; font-weight: 500; }
-.user-role { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
-
-.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
-
-.topbar {
-  background: #1e1e1e;
-  border-bottom: 1px solid var(--border);
-  padding: 14px 28px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-
-.page-title {
-  font-family: var(--font-head);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
-
-.content { padding: 24px 28px; flex: 1; }
-
-/* ── TABS ── */
-.tabs {
-  display: flex;
-  gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 3px;
-  width: fit-content;
-  margin-bottom: 24px;
-}
-
-.tab {
-  padding: 7px 16px;
-  border-radius: 8px;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 13px;
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-
-.tab.active { background: var(--surface2); color: var(--text); }
-.tab:hover:not(.active) { color: var(--text); }
-
-/* ── CARDS ── */
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 18px 20px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.2s;
-}
-.stat-card:hover { border-color: rgba(225,143,0,0.3); }
-
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--accent-card, var(--accent));
-  border-radius: 0;
-}
-
-.stat-label {
-  font-size: 10px;
-  color: var(--muted);
-  font-family: var(--font-head);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.stat-value {
-  font-family: var(--font-head);
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1;
-  margin-bottom: 4px;
-  letter-spacing: -0.01em;
-}
-
-.stat-sub {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-/* ── BUTTONS ── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
-  border-radius: var(--r);
-  border: none;
-  font-size: 13px;
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #1a0e00;
-  font-weight: 600;
-  font-family: var(--font-head);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 12px;
-}
-.btn-primary:hover { background: #f5a623; transform: translateY(-1px); }
-
-.btn-secondary {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--border2);
-}
-.btn-secondary:hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
-
-.btn-ghost {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-}
-.btn-ghost:hover { color: var(--text); border-color: var(--border2); }
-
-.btn-danger {
-  background: rgba(240,149,149,0.1);
-  color: var(--danger);
-  border: 1px solid rgba(240,149,149,0.2);
-}
-.btn-danger:hover { background: rgba(240,149,149,0.2); }
-
-.btn-sm { padding: 5px 11px; font-size: 12px; }
-.btn-icon { padding: 7px; border-radius: 8px; }
-
-/* ── TABLE ── */
-.table-wrap {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-}
-
-.table-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  gap: 12px;
-}
-
-.table-header-left { display: flex; align-items: center; gap: 12px; flex: 1; }
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th {
-  padding: 11px 14px;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface2);
-  white-space: nowrap;
-}
-
-td {
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  vertical-align: middle;
-}
-
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,0.015); }
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: var(--font-mono);
-  white-space: nowrap;
-}
-
-.badge-ok { background: rgba(225,143,0,0.12); color: #e18f00; border: 1px solid rgba(225,143,0,0.25); }
-.badge-warn { background: rgba(239,159,39,0.12); color: #EF9F27; border: 1px solid rgba(239,159,39,0.2); }
-.badge-danger { background: rgba(240,149,149,0.12); color: #F09595; border: 1px solid rgba(240,149,149,0.2); }
-.badge-info { background: rgba(133,183,235,0.12); color: #85B7EB; border: 1px solid rgba(133,183,235,0.2); }
-.badge-purple { background: rgba(175,169,236,0.12); color: #AFA9EC; border: 1px solid rgba(175,169,236,0.2); }
-
-/* ── SEARCH & FILTERS ── */
-.search-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0 12px;
-  flex: 1;
-  max-width: 360px;
-  transition: border-color 0.15s;
-}
-
-.search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(225,143,0,0.15); }
-
-.search-bar input {
-  border: none;
-  background: none;
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font-body);
-  padding: 9px 4px;
-  flex: 1;
-  outline: none;
-}
-
-.search-bar input::placeholder { color: var(--muted); }
-
-.filters {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-select, .select {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font-body);
-  padding: 7px 10px;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-select:focus { border-color: var(--accent); }
-
-/* ── UPLOAD ZONE ── */
-.upload-zone {
-  border: 1.5px dashed var(--border2);
-  border-radius: var(--r-lg);
-  padding: 32px;
-  text-align: center;
-  background: var(--surface);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.upload-zone:hover, .upload-zone.drag-over {
-  border-color: var(--accent);
-  background: rgba(225,143,0,0.05);
-}
-
-.upload-icon {
-  font-size: 36px;
-  margin-bottom: 10px;
-  opacity: 0.5;
-}
-
-.upload-title { font-family: var(--font-head); font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.upload-sub { color: var(--muted); font-size: 12px; }
-
-/* ── MODAL ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s;
-}
-
-.modal-overlay.open { opacity: 1; pointer-events: all; }
-
-.modal {
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: var(--r-lg);
-  padding: 28px;
-  width: 580px;
-  max-width: 95vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  transform: translateY(16px);
-  transition: transform 0.2s;
-}
-
-.modal-overlay.open .modal { transform: translateY(0); }
-
-.modal-title {
-  font-family: var(--font-head);
-  font-size: 17px;
-  font-weight: 600;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.form-full { grid-column: 1/-1; }
-
-.form-group { display: flex; flex-direction: column; gap: 5px; }
-
-.form-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.form-input {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font-body);
-  padding: 9px 12px;
-  outline: none;
-  transition: border-color 0.15s;
-  width: 100%;
-}
-
-.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(225,143,0,0.15); }
-
-/* ── NOTIFICATIONS ── */
-.toast-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 2000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.toast {
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: var(--r);
-  padding: 12px 16px;
-  font-size: 13px;
-  min-width: 260px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  animation: slideUp 0.2s ease;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-}
-
-.toast.success { border-left: 3px solid #e18f00; }
-.toast.error { border-left: 3px solid var(--danger); }
-.toast.info { border-left: 3px solid var(--info); }
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ── PROGRESS ── */
-.progress-bar {
-  height: 3px;
-  background: var(--border);
-  border-radius: 99px;
-  overflow: hidden;
-  margin-top: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #e18f00, #f5a623);
-  border-radius: 99px;
-  transition: width 0.3s ease;
-}
-
-/* ── CONCILIACION DIFF ── */
-.diff-pos { color: var(--accent); }
-.diff-neg { color: var(--danger); }
-.diff-zero { color: var(--muted); }
-
-.empty-state {
-  text-align: center;
-  padding: 60px 24px;
-  color: var(--muted);
-}
-
-.empty-state .empty-icon {
-  font-size: 40px;
-  margin-bottom: 12px;
-  opacity: 0.3;
-}
-
-.empty-state p { font-size: 14px; }
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  font-family: var(--font-head);
-  font-size: 17px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
-
-.text-mono { font-family: var(--font-mono); }
-.text-muted { color: var(--muted); }
-.text-sm { font-size: 12px; }
-.text-xs { font-size: 11px; }
-
-.loading-row td {
-  text-align: center;
-  padding: 40px;
-  color: var(--muted);
-}
-
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border2);
-  border-top-color: #e18f00;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  background: var(--surface2);
-  color: var(--muted);
-  border: 1px solid var(--border);
-}
+:root{--negro:#393939;--negro2:#2a2a2a;--negro3:#1e1e1e;--naranja:#E18F00;--naranja-light:#F5A800;--blanco:#EFEFEF;--gris:#888;--gris2:#555;--border:#444}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Mona Sans',sans-serif;background:var(--negro3);color:var(--blanco);min-height:100vh}
+.header{background:var(--negro);border-bottom:2px solid var(--naranja);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo-wrap{display:flex;align-items:center;gap:14px}
+.logo-img{height:48px;width:auto}
+.logo-text{display:flex;flex-direction:column}
+.logo-title{font-size:20px;font-weight:700;color:var(--naranja);letter-spacing:0.04em;line-height:1}
+.logo-sub{font-size:11px;font-weight:300;color:var(--gris);letter-spacing:0.12em;text-transform:uppercase;margin-top:3px}
+.docs-badge{font-size:12px;color:var(--gris);background:var(--negro2);border:1px solid var(--border);padding:5px 14px;border-radius:20px}
+.docs-badge strong{color:var(--naranja)}
+.main{max-width:980px;margin:0 auto;padding:2rem 1.5rem 5rem}
+.section{margin-bottom:2rem}
+.sec-header{display:flex;align-items:center;gap:10px;margin-bottom:1.2rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.sec-num{width:28px;height:28px;background:var(--naranja);color:var(--negro3);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.sec-title{font-size:12px;font-weight:600;color:var(--gris);letter-spacing:0.1em;text-transform:uppercase}
+.ine-zone{border:1.5px dashed var(--border);border-radius:12px;padding:1.8rem;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--negro2)}
+.ine-zone:hover{border-color:var(--naranja);background:var(--negro)}
+.ine-zone.drag-over{border-color:var(--naranja);background:var(--negro)}
+.ine-icon{font-size:2.2rem;margin-bottom:8px}
+.ine-main{font-size:14px;color:var(--blanco);font-weight:500;margin-bottom:4px}
+.ine-sub{font-size:12px;color:var(--gris)}
+.ine-preview{display:none;margin-top:1rem;border-radius:8px;max-height:140px;object-fit:contain}
+#ine-file{display:none}
+.status-bar{display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:10px;align-items:center;gap:8px}
+.status-bar.show{display:flex}
+.status-bar.loading{background:rgba(225,143,0,0.1);border:1px solid rgba(225,143,0,0.3);color:var(--naranja)}
+.status-bar.ok{background:rgba(76,175,125,0.1);border:1px solid rgba(76,175,125,0.3);color:#4CAF7D}
+.status-bar.err{background:rgba(224,82,82,0.1);border:1px solid rgba(224,82,82,0.3);color:#E05252}
+.spin{animation:spin 1s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid.three{grid-template-columns:1fr 1fr 1fr}
+.field{display:flex;flex-direction:column;gap:5px}
+.field.full{grid-column:1/-1}
+label{font-size:11px;font-weight:600;color:var(--gris);letter-spacing:0.07em;text-transform:uppercase}
+input{background:var(--negro2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--blanco);font-family:'Mona Sans',sans-serif;transition:border-color 0.2s;width:100%}
+input:focus{outline:none;border-color:var(--naranja)}
+input::placeholder{color:var(--gris2)}
+input[readonly]{color:var(--gris);background:var(--negro);border-style:dashed}
+input[type="date"]{color-scheme:dark;accent-color:var(--naranja)}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(60%) sepia(80%) saturate(400%) hue-rotate(10deg);cursor:pointer;width:18px;height:18px}
+.auto-hint{font-size:11px;color:var(--naranja);margin-top:2px}
+.finance-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:1rem}
+.fc{background:var(--negro2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.fc.total{grid-column:1/-1;border-color:var(--naranja);background:rgba(225,143,0,0.06)}
+.fc-label{font-size:10px;color:var(--gris);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px}
+.fc-val{font-size:17px;font-weight:600;color:var(--naranja)}
+.fc-letra{font-size:10px;color:var(--gris);margin-top:3px;line-height:1.4}
+.docs-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.doc-item{background:var(--negro2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gris)}
+.doc-icon{color:var(--naranja);font-size:16px}
+.gen-btn{width:100%;padding:16px;background:var(--naranja);color:var(--negro3);border:none;border-radius:10px;font-size:15px;font-weight:700;font-family:'Mona Sans',sans-serif;cursor:pointer;transition:all 0.2s;letter-spacing:0.03em;margin-top:0.5rem;text-transform:uppercase}
+.gen-btn:hover{background:var(--naranja-light);transform:translateY(-1px)}
+.gen-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:200;align-items:center;justify-content:center;flex-direction:column}
+.overlay.show{display:flex}
+.overlay-card{background:var(--negro);border:1px solid var(--naranja);border-radius:16px;padding:2.5rem 3rem;text-align:center;max-width:400px;width:90%}
+.overlay-title{font-size:1.2rem;font-weight:700;color:var(--naranja);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em}
+.overlay-sub{font-size:13px;color:var(--gris);margin-bottom:1.5rem}
+.step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:var(--gris2);border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step.done{color:#4CAF7D}
+.step.active{color:var(--blanco)}
+.step-icon{width:20px;text-align:center;font-size:14px}
+.success-card{display:none;background:rgba(76,175,125,0.08);border:1px solid rgba(76,175,125,0.3);border-radius:12px;padding:1.5rem;text-align:center;margin-top:1rem}
+.success-card.show{display:block}
+.success-title{font-size:1.1rem;font-weight:700;color:#4CAF7D;margin-bottom:6px;text-transform:uppercase}
+.success-sub{font-size:13px;color:var(--gris)}
+.drive-link{color:var(--naranja);text-decoration:none;font-weight:600}
+.drive-link:hover{text-decoration:underline}
+@media(max-width:640px){.grid,.grid.three{grid-template-columns:1fr}.finance-grid{grid-template-columns:1fr 1fr}.fc.total{grid-column:1/-1}.docs-list{grid-template-columns:1fr 1fr}.header{padding:1rem}}
 </style>
 </head>
 <body>
-
-<div class="layout">
-
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <svg width="32" height="36" viewBox="0 0 160 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- Left thin column -->
-          <rect x="8" y="60" width="28" height="90" rx="6" fill="#e18f00"/>
-          <!-- Inner small column (middle notch detail) -->
-          <rect x="48" y="80" width="20" height="70" rx="5" fill="#e18f00"/>
-          <!-- Right large column with rounded top cap -->
-          <path d="M86 20 Q86 8 100 8 L136 8 Q150 8 150 22 L150 148 Q150 156 142 156 L94 156 Q86 156 86 148 Z" fill="#e18f00"/>
-          <!-- Bottom bridge connecting left to right -->
-          <rect x="8" y="130" width="142" height="30" rx="8" fill="#e18f00"/>
-          <!-- Cutout to create inner U space -->
-          <rect x="36" y="60" width="50" height="72" fill="#1e1e1e"/>
-        </svg>
-        <div>
-          <div class="logo-mark">UPTOWN</div>
-          <div class="logo-sub">· Facturas</div>
-        </div>
-      </div>
+<header class="header">
+  <div class="logo-wrap">
+    <img class="logo-img" src="data:image/png;base64,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" alt="Uptown">
+    <div class="logo-text">
+      <span class="logo-title">Uptown</span>
+      <span class="logo-sub">Generador de Contratos</span>
     </div>
-    <nav class="sidebar-nav">
-      <div class="nav-section">Principal</div>
-      <button class="nav-item active" onclick="setPage('dashboard')">
-        <span class="icon">◈</span> Dashboard
-      </button>
-      <button class="nav-item" onclick="setPage('facturas')">
-        <span class="icon">◧</span> Facturas
-      </button>
-      <button class="nav-item" onclick="setPage('banco')">
-        <span class="icon">◫</span> Estado de cuenta
-      </button>
-      <div class="nav-section">Análisis</div>
-      <button class="nav-item" onclick="setPage('conciliacion')">
-        <span class="icon">⇄</span> Conciliación
-      </button>
-      <button class="nav-item" onclick="setPage('msi')">
-        <span class="icon">◑</span> MSI
-      </button>
-      <button class="nav-item" onclick="setPage('reportes')">
-        <span class="icon">◉</span> Reportes
-      </button>
-    </nav>
-    <div style="padding:0 12px 8px;font-family:var(--font-head);font-size:9px;letter-spacing:0.15em;color:rgba(225,143,0,0.4);text-transform:uppercase;text-align:center">The next generation of builders.</div>
-    <div class="sidebar-footer">
-      <div class="user-chip">
-        <div class="user-avatar" id="user-avatar">AD</div>
-        <div>
-          <div class="user-name" id="user-name-display">Admin</div>
-          <div class="user-role">Equipo</div>
-        </div>
-      </div>
+  </div>
+  <div class="docs-badge">Genera <strong>9</strong> documentos a la vez</div>
+</header>
+<main class="main">
+
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">1</div><div class="sec-title">Lectura automática de INE</div></div>
+    <div class="ine-zone" id="ine-zone" onclick="document.getElementById('ine-file').click()" ondragover="dragOver(event)" ondrop="dropFile(event)" ondragleave="dragLeave(event)">
+      <div class="ine-icon">🪪</div>
+      <div class="ine-main">Toca o arrastra la foto del INE aquí</div>
+      <div class="ine-sub">La IA extrae nombre, CURP, INE y domicilio automáticamente</div>
+      <img id="ine-preview" class="ine-preview" alt="preview">
     </div>
-  </aside>
+    <input type="file" id="ine-file" accept="image/*,.pdf" onchange="leerINE(this.files[0])">
+    <div class="status-bar" id="ine-status"></div>
+  </div>
 
-  <!-- MAIN -->
-  <main class="main">
-    <header class="topbar">
-      <div style="display:flex;align-items:center;gap:14px">
-        <svg width="22" height="24" viewBox="0 0 160 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="8" y="60" width="28" height="90" rx="6" fill="#e18f00"/>
-          <rect x="48" y="80" width="20" height="70" rx="5" fill="#e18f00"/>
-          <path d="M86 20 Q86 8 100 8 L136 8 Q150 8 150 22 L150 148 Q150 156 142 156 L94 156 Q86 156 86 148 Z" fill="#e18f00"/>
-          <rect x="8" y="130" width="142" height="30" rx="8" fill="#e18f00"/>
-          <rect x="36" y="60" width="50" height="72" fill="#393939"/>
-        </svg>
-        <div class="page-title" id="page-title">Dashboard</div>
-      </div>
-      <div class="topbar-actions">
-        <select id="usuario-select" onchange="cambiarUsuario(this.value)" style="max-width:160px">
-        </select>
-        <span id="drive-status" style="font-size:11px;font-family:var(--font-mono);color:var(--muted)"></span>
-        <button class="btn btn-primary btn-sm" onclick="abrirModalFactura()">
-          + Nueva factura
-        </button>
-      </div>
-    </header>
-
-    <div class="content" id="content">
-      <!-- Contenido dinámico -->
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">2</div><div class="sec-title">Datos del comprador</div></div>
+    <div class="grid">
+      <div class="field full"><label>Nombre completo</label><input type="text" id="nombre" placeholder="VALERIA ESLAVA CRUZ" oninput="this.value=this.value.toUpperCase();autoInvertir()"><span class="auto-hint">✦ El nombre invertido se genera automáticamente</span></div>
+      <div class="field"><label>CURP</label><input type="text" id="curp" placeholder="EACV020401MDFSRLA0" maxlength="18" oninput="this.value=this.value.toUpperCase()"></div>
+      <div class="field"><label>RFC</label><input type="text" id="rfc" placeholder="Opcional" maxlength="13" oninput="this.value=this.value.toUpperCase()"></div>
+      <div class="field"><label>No. de credencial INE</label><input type="text" id="ine-num" placeholder="ESCRVL02040109M500"></div>
+      <div class="field"><label>Fecha de nacimiento</label><input type="date" id="fechaNac"></div>
+      <div class="field full"><label>Domicilio</label><input type="text" id="domicilio" placeholder="Av. San Jerónimo 638, Col. Pueblo Nuevo Alto, CDMX"></div>
+      <div class="field"><label>Teléfono celular</label><input type="text" id="telefono" placeholder="55 1234 5678"></div>
+      <div class="field"><label>Correo electrónico</label><input type="text" id="email" placeholder="correo@ejemplo.com"></div>
+      <div class="field"><label>Estado civil</label><input type="text" id="estadoCivil" placeholder="Soltero / Casado"></div>
+      <div class="field"><label>Ocupación</label><input type="text" id="ocupacion" placeholder="Ej. Empleado"></div>
     </div>
-  </main>
+  </div>
 
-</div>
-
-<!-- ── MODAL FACTURA ── -->
-<div class="modal-overlay" id="modal-factura">
-  <div class="modal">
-    <div class="modal-title">
-      <span>Agregar factura</span>
-      <button class="btn btn-ghost btn-icon btn-sm" onclick="cerrarModal('modal-factura')">✕</button>
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">3</div><div class="sec-title">Datos del departamento</div></div>
+    <div class="grid">
+      <div class="field"><label>Número de departamento</label><input type="text" id="depto" placeholder="202"></div>
+      <div class="field"><label>Nivel / piso (en letra)</label><input type="text" id="nivel" placeholder="segundo"></div>
+      <div class="field"><label>Metros cuadrados (m2)</label><input type="text" id="m2" placeholder="70"></div>
     </div>
+  </div>
 
-    <!-- TABS MODAL -->
-    <div class="tabs" style="margin-bottom:20px">
-      <button class="tab active" onclick="switchModalTab('subir')">Subir archivo</button>
-      <button class="tab" onclick="switchModalTab('manual')">Manual</button>
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">4</div><div class="sec-title">Condiciones económicas</div></div>
+    <div class="grid">
+      <div class="field"><label>Precio total ($)</label><input type="number" id="precio" placeholder="3500000" oninput="calcular()"></div>
+      <div class="field"><label>Apartado ($) — fijo $20,000</label><input type="number" id="apartado" value="20000" readonly><span class="auto-hint">✦ Siempre $20,000</span></div>
+      <div class="field"><label>Enganche ($)</label><input type="number" id="enganche" placeholder="350000" oninput="calcular()"></div>
+      <div class="field"><label>Finiquito — automático</label><input type="number" id="finiquito" readonly placeholder="Se calcula solo"><span class="auto-hint">✦ Precio − Apartado − Enganche</span></div>
     </div>
-
-    <!-- Subir archivo -->
-    <div id="modal-tab-subir">
-      <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <div class="upload-icon">⬆</div>
-        <div class="upload-title">Arrastra o selecciona archivos</div>
-        <div class="upload-sub">XML · PDF · JPG · PNG — Extracción automática con IA</div>
-        <input type="file" id="file-input" accept=".xml,.pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="handleFiles(this.files)">
-      </div>
-      <div id="upload-progress" style="margin-top:16px;display:none">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span class="text-sm text-muted">Procesando con IA...</span>
-          <span class="text-sm text-mono" id="upload-progress-pct">0%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-        </div>
-      </div>
-      <div style="margin-top:14px">
-        <label class="form-label">Tipo de factura</label>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="btn btn-secondary btn-sm tipo-btn active" data-tipo="emitida" onclick="selectTipo('emitida',this)">Emitida (cobrar)</button>
-          <button class="btn btn-ghost btn-sm tipo-btn" data-tipo="recibida" onclick="selectTipo('recibida',this)">Recibida (pagar)</button>
-        </div>
-      </div>
+    <div class="finance-grid">
+      <div class="fc"><div class="fc-label">Apartado</div><div class="fc-val" id="fc-ap">$20,000</div><div class="fc-letra" id="fc-ap-l">veinte mil pesos 00/100 M.N.</div></div>
+      <div class="fc"><div class="fc-label">Enganche</div><div class="fc-val" id="fc-en">—</div><div class="fc-letra" id="fc-en-l">—</div></div>
+      <div class="fc"><div class="fc-label">Finiquito</div><div class="fc-val" id="fc-fi">—</div><div class="fc-letra" id="fc-fi-l">—</div></div>
+      <div class="fc total"><div class="fc-label">Precio Total</div><div class="fc-val" id="fc-to">—</div><div class="fc-letra" id="fc-to-l">—</div></div>
     </div>
+  </div>
 
-    <!-- Manual -->
-    <div id="modal-tab-manual" style="display:none">
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Folio</label>
-          <input class="form-input" id="m-folio" placeholder="A-001">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Fecha</label>
-          <input class="form-input" id="m-fecha" type="date">
-        </div>
-        <div class="form-group">
-          <label class="form-label">RFC Emisor</label>
-          <input class="form-input" id="m-rfc-emisor" placeholder="XAXX010101000">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Nombre Emisor</label>
-          <input class="form-input" id="m-nombre-emisor" placeholder="Empresa S.A.">
-        </div>
-        <div class="form-group">
-          <label class="form-label">RFC Receptor</label>
-          <input class="form-input" id="m-rfc-receptor" placeholder="XAXX010101000">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Nombre Receptor</label>
-          <input class="form-input" id="m-nombre-receptor" placeholder="Cliente S.A.">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Subtotal</label>
-          <input class="form-input" id="m-subtotal" type="number" placeholder="0.00" oninput="calcTotal()">
-        </div>
-        <div class="form-group">
-          <label class="form-label">IVA</label>
-          <input class="form-input" id="m-iva" type="number" placeholder="0.00" oninput="calcTotal()">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Total</label>
-          <input class="form-input" id="m-total" type="number" placeholder="0.00">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Tipo</label>
-          <select class="form-input" id="m-tipo">
-            <option value="emitida">Emitida (cobrar)</option>
-            <option value="recibida">Recibida (pagar)</option>
-          </select>
-        </div>
-        <div class="form-group form-full">
-          <label class="form-label">Concepto</label>
-          <input class="form-input" id="m-concepto" placeholder="Descripción del servicio o producto">
-        </div>
-      </div>
-      <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">
-        <button class="btn btn-ghost btn-sm" onclick="cerrarModal('modal-factura')">Cancelar</button>
-        <button class="btn btn-primary btn-sm" onclick="guardarManual()">Guardar factura</button>
-      </div>
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">5</div><div class="sec-title">Fechas</div></div>
+    <div class="grid three">
+      <div class="field"><label>Fecha de apartado</label><input type="date" id="fechaApartado"></div>
+      <div class="field"><label>Fecha de enganche</label><input type="date" id="fechaEnganche"></div>
+      <div class="field"><label>Fecha límite de finiquito</label><input type="date" id="fechaFiniquito"></div>
+      <div class="field"><label>Fecha de firma contrato</label><input type="date" id="fechaContrato" oninput="document.getElementById('fechaEnganche').value=this.value"></div>
+      <div class="field"><label>Fecha de entrega del depto</label><input type="date" id="fechaEntrega" oninput="sincronizarGarantia()"></div>
+      <div class="field"><label>Fecha inicio garantía — automática</label><input type="date" id="fechaGarantia" readonly><span class="auto-hint">✦ Igual que fecha de entrega</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-header"><div class="sec-num">6</div><div class="sec-title">Documentos que se generarán</div></div>
+    <div class="docs-list">
+      <div class="doc-item"><span class="doc-icon">📋</span>Compendio (todos juntos)</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>1. Contrato compraventa</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>2. Recibo de apartado</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>3. Acta de entrega</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>4. Póliza de garantía</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>5. Responsiva de mudanza</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>6. Reporte de reparación</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>7. Aviso mantenimiento</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>8. Requisitos CFE</div>
+      <div class="doc-item"><span class="doc-icon">📄</span>9. Bienvenida</div>
+    </div>
+  </div>
+
+  <button class="gen-btn" id="gen-btn" onclick="generarTodo()">✦ &nbsp; Generar los 9 documentos + compendio y subir a Drive</button>
+  <div class="success-card" id="success-card">
+    <div class="success-title">✓ Documentos generados correctamente</div>
+    <div class="success-sub" id="success-msg"></div>
+  </div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="overlay-card">
+    <div class="overlay-title">Generando documentos</div>
+    <div class="overlay-sub">Por favor espera un momento...</div>
+    <div>
+      <div class="step" id="step1"><span class="step-icon">⏳</span>Procesando datos</div>
+      <div class="step" id="step2"><span class="step-icon">⏳</span>Generando contrato</div>
+      <div class="step" id="step3"><span class="step-icon">⏳</span>Generando apartado</div>
+      <div class="step" id="step4"><span class="step-icon">⏳</span>Generando acta de entrega</div>
+      <div class="step" id="step5"><span class="step-icon">⏳</span>Generando póliza de garantía</div>
+      <div class="step" id="step6"><span class="step-icon">⏳</span>Generando reporte y responsiva</div>
+      <div class="step" id="step7"><span class="step-icon">⏳</span>Subiendo a Google Drive</div>
     </div>
   </div>
 </div>
-
-<!-- ── MODAL MOVIMIENTO ── -->
-<div class="modal-overlay" id="modal-movimiento">
-  <div class="modal" style="width:440px">
-    <div class="modal-title">
-      <span>Agregar movimiento</span>
-      <button class="btn btn-ghost btn-icon btn-sm" onclick="cerrarModal('modal-movimiento')">✕</button>
-    </div>
-    <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Fecha</label>
-        <input class="form-input" id="mov-fecha" type="date">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Tipo</label>
-        <select class="form-input" id="mov-tipo">
-          <option value="abono">Abono (entrada)</option>
-          <option value="cargo">Cargo (salida)</option>
-        </select>
-      </div>
-      <div class="form-group form-full">
-        <label class="form-label">Descripción</label>
-        <input class="form-input" id="mov-desc" placeholder="Concepto del movimiento">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Monto</label>
-        <input class="form-input" id="mov-monto" type="number" placeholder="0.00">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Referencia (opcional)</label>
-        <input class="form-input" id="mov-ref" placeholder="Número de ref.">
-      </div>
-    </div>
-    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">
-      <button class="btn btn-ghost btn-sm" onclick="cerrarModal('modal-movimiento')">Cancelar</button>
-      <button class="btn btn-primary btn-sm" onclick="guardarMovimiento()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- TOASTS -->
-<div class="toast-container" id="toast-container"></div>
 
 <script>
-// ─── STATE ───────────────────────────────────────────────────────────────
-let state = {
-  page: 'dashboard',
-  usuarioId: 1,
-  usuarioNombre: 'Admin',
-  tipoFactura: 'emitida',
-  facturas: [],
-  movimientos: [],
-  resumen: {},
-  filtros: { q: '', tipo: '', mes: '', anio: '', estado: '', conciliada: '' }
-};
+const ONES=['','un','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve'];
+const TENS=['','','veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+const HUNDS=['','cien','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+function cents(n){if(n<20)return ONES[n];const t=Math.floor(n/10),o=n%10;if(n===20)return'veinte';if(t===2)return o?'veinti'+ONES[o]:TENS[2];return o?TENS[t]+' y '+ONES[o]:TENS[t];}
+function hunds(n){if(n===100)return'cien';const h=Math.floor(n/100),r=n%100;return r?HUNDS[h]+' '+cents(r):HUNDS[h];}
+function toLetra(n){n=Math.round(n);if(n===0)return'cero pesos 00/100 M.N.';let s='';const mill=Math.floor(n/1000000),mil=Math.floor((n%1000000)/1000),rest=n%1000;if(mill)s+=(mill===1?'un millón':hunds(mill)+' millones')+' ';if(mil)s+=(mil===1?'mil':hunds(mil)+' mil')+' ';if(rest)s+=hunds(rest);return s.trim()+' pesos 00/100 M.N.';}
+function fmtPesos(n){return'$'+Math.round(n).toLocaleString('es-MX');}
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function fmtDate(id){const v=document.getElementById(id).value;if(!v)return'';const[y,m,d]=v.split('-');return`${parseInt(d)} de ${MESES[parseInt(m)-1]} del ${y}`;}
+function fmtDateCorta(id){const v=document.getElementById(id).value;if(!v)return'';const[y,m,d]=v.split('-');return`${parseInt(d)} de ${MESES[parseInt(m)-1]} de ${y}`;}
+function g(id){return(document.getElementById(id).value||'').trim();}
 
-const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
-// ─── INIT ─────────────────────────────────────────────────────────────────
-async function init() {
-  await cargarUsuarios();
-  setPage('dashboard');
-}
-
-async function cargarUsuarios() {
-  const res = await fetch('/api/usuarios');
-  const usuarios = await res.json();
-  const sel = document.getElementById('usuario-select');
-  sel.innerHTML = usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
-  if (usuarios.length) {
-    state.usuarioId = usuarios[0].id;
-    state.usuarioNombre = usuarios[0].nombre;
-    document.getElementById('user-name-display').textContent = usuarios[0].nombre;
-    document.getElementById('user-avatar').textContent = usuarios[0].nombre.slice(0,2).toUpperCase();
+function autoInvertir(){
+  const nombre=g('nombre').toUpperCase().trim();
+  if(!nombre)return;
+  const partes=nombre.split(/\s+/).filter(p=>p);
+  if(partes.length>=3){
+    // Asume: NOMBRE(S) APELLIDO1 APELLIDO2 → invertir a APELLIDO1 APELLIDO2 NOMBRE(S)
+    // El INE normalmente trae APELLIDO1 APELLIDO2 NOMBRE — lo dejamos igual
   }
 }
 
-function cambiarUsuario(id) {
-  state.usuarioId = parseInt(id);
-  const sel = document.getElementById('usuario-select');
-  const opt = sel.options[sel.selectedIndex];
-  document.getElementById('user-name-display').textContent = opt.text;
-  document.getElementById('user-avatar').textContent = opt.text.slice(0,2).toUpperCase();
-  renderPage();
+function sincronizarGarantia(){
+  const v=document.getElementById('fechaEntrega').value;
+  document.getElementById('fechaGarantia').value=v;
 }
 
-// ─── ROUTING ──────────────────────────────────────────────────────────────
-function setPage(page) {
-  state.page = page;
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const idx = ['dashboard','facturas','banco','conciliacion','msi','reportes'].indexOf(page);
-  document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
-  const titles = { dashboard: 'Dashboard', facturas: 'Facturas', banco: 'Estado de Cuenta', conciliacion: 'Conciliación', msi: 'Compras a Meses', reportes: 'Reportes' };
-  document.getElementById('page-title').textContent = titles[page] || page;
-  renderPage();
+function calcular(){
+  const p=parseFloat(document.getElementById('precio').value)||0;
+  const a=20000;
+  const e=parseFloat(document.getElementById('enganche').value)||0;
+  const f=Math.max(0,p-a-e);
+  document.getElementById('finiquito').value=f||'';
+  const u=(idV,idL,v)=>{document.getElementById(idV).textContent=v?fmtPesos(v):'—';document.getElementById(idL).textContent=v?toLetra(v):'—';};
+  u('fc-en','fc-en-l',e);u('fc-fi','fc-fi-l',f);u('fc-to','fc-to-l',p);
 }
 
-async function renderPage() {
-  const content = document.getElementById('content');
-  content.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
-  switch(state.page) {
-    case 'dashboard': await renderDashboard(); break;
-    case 'facturas': await renderFacturas(); break;
-    case 'banco': await renderBanco(); break;
-    case 'conciliacion': await renderConciliacion(); break;
-    case 'msi': await renderMSI(); break;
-    case 'reportes': await renderReportes(); break;
-  }
-}
+function dragOver(e){e.preventDefault();document.getElementById('ine-zone').classList.add('drag-over');}
+function dragLeave(e){document.getElementById('ine-zone').classList.remove('drag-over');}
+function dropFile(e){e.preventDefault();dragLeave(e);const f=e.dataTransfer.files[0];if(f)leerINE(f);}
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────
-async function renderDashboard() {
-  const res = await fetch(`/api/conciliacion/resumen?usuario_id=${state.usuarioId}`);
-  const r = await res.json();
-  const content = document.getElementById('content');
-
-  // Fetch banco and MSI data in parallel
-  const [resBanco, resMSI] = await Promise.all([
-    fetch(`/api/movimientos?usuario_id=${state.usuarioId}`),
-    fetch(`/api/msi/resumen?usuario_id=${state.usuarioId}`)
-  ]);
-  const movimientos = await resBanco.json();
-  const msiResumen = await resMSI.json();
-
-  const totalAbonos = movimientos.filter(m=>m.tipo==='abono').reduce((s,m)=>s+m.monto,0);
-  const totalCargos = movimientos.filter(m=>m.tipo==='cargo').reduce((s,m)=>s+m.monto,0);
-  const movRecientes = movimientos.slice(0,5);
-
-  content.innerHTML = `
-    <!-- FACTURAS -->
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Facturas</div>
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Total facturas</div>
-        <div class="stat-value">${r.total_facturas || 0}</div>
-        <div class="stat-sub">${r.emitidas||0} emitidas · ${r.recibidas||0} recibidas</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Por cobrar</div>
-        <div class="stat-value" style="color:var(--accent2)">${fmt(r.por_cobrar||0)}</div>
-        <div class="stat-sub">${Math.max(0,(r.emitidas||0)-(r.conciliadas||0))} facturas pendientes</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Por pagar</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(r.por_pagar||0)}</div>
-        <div class="stat-sub">${r.pendientes||0} facturas pendientes</div>
-      </div>
-      <div class="stat-card" style="--accent-card:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">
-        <div class="stat-label">Balance neto</div>
-        <div class="stat-value" style="color:${(r.balance||0) >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmt(r.balance||0)}</div>
-        <div class="stat-sub">Emitido − Recibido</div>
-      </div>
-    </div>
-
-    <!-- ESTADO DE CUENTA -->
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Estado de cuenta</div>
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Movimientos registrados</div>
-        <div class="stat-value">${movimientos.length}</div>
-        <div class="stat-sub">${movimientos.filter(m=>m.tipo==='abono').length} abonos · ${movimientos.filter(m=>m.tipo==='cargo').length} cargos</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Total abonos</div>
-        <div class="stat-value" style="color:var(--accent)">${fmt(totalAbonos)}</div>
-        <div class="stat-sub">Entradas registradas</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Total cargos</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(totalCargos)}</div>
-        <div class="stat-sub">Salidas registradas</div>
-      </div>
-      <div class="stat-card" style="--accent-card:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">
-        <div class="stat-label">Flujo neto</div>
-        <div class="stat-value" style="color:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">${fmt(totalAbonos-totalCargos)}</div>
-        <div class="stat-sub">Abonos − Cargos</div>
-      </div>
-    </div>
-
-    <!-- MSI -->
-    ${msiResumen.compras_activas > 0 ? `
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Meses sin intereses</div>
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Compras activas MSI</div>
-        <div class="stat-value">${msiResumen.compras_activas}</div>
-        <div class="stat-sub">A meses sin intereses</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Deuda total MSI</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(msiResumen.total_deuda_msi||0)}</div>
-        <div class="stat-sub">Saldo pendiente</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Pago mensual MSI</div>
-        <div class="stat-value" style="color:var(--accent2)">${fmt(msiResumen.pago_mensual_msi||0)}</div>
-        <div class="stat-sub">Se cobra este mes</div>
-      </div>
-    </div>` : ''}
-
-    <!-- GRID INFERIOR -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-      <div>
-        <div class="section-header"><span class="section-title">Facturas recientes</span><button class="btn btn-ghost btn-sm" onclick="setPage('facturas')">Ver todas →</button></div>
-        <div id="dash-facturas-recientes"></div>
-      </div>
-      <div>
-        <div class="section-header"><span class="section-title">Movimientos recientes</span><button class="btn btn-ghost btn-sm" onclick="setPage('banco')">Ver todos →</button></div>
-        ${movRecientes.length === 0 ? '<div class="empty-state" style="padding:30px"><p>Sin movimientos aún</p></div>' : `
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead>
-            <tbody>
-              ${movRecientes.map(m=>`
-                <tr>
-                  <td class="text-sm text-muted">${m.fecha||'—'}</td>
-                  <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${m.descripcion||'—'}</td>
-                  <td>${m.tipo==='abono'?'<span class="badge badge-ok">Abono</span>':'<span class="badge badge-danger">Cargo</span>'}</td>
-                  <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};">${fmt(m.monto)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>`}
-      </div>
-    </div>
-  `;
-
-  const fRes = await fetch(`/api/facturas?usuario_id=${state.usuarioId}`);
-  const facturas = (await fRes.json()).slice(0,6);
-  document.getElementById('dash-facturas-recientes').innerHTML = renderTablaFacturasMini(facturas);
-}
-
-function renderTablaFacturasMini(facturas) {
-  if (!facturas.length) return '<div class="empty-state" style="padding:30px"><p>Sin facturas aún</p></div>';
-  return `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Folio</th><th>Empresa</th><th>Total</th><th>Estado</th></tr></thead>
-        <tbody>
-          ${facturas.map(f => `
-            <tr>
-              <td class="text-mono text-sm">${f.folio || '—'}</td>
-              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.tipo==='emitida'?(f.nombre_receptor||'—'):(f.nombre_emisor||'—')}</td>
-              <td class="text-mono">${fmt(f.total)}</td>
-              <td>${badgeConciliada(f)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-// ─── FACTURAS ─────────────────────────────────────────────────────────────
-async function renderFacturas() {
-  const content = document.getElementById('content');
-  content.innerHTML = `
-    <div class="table-wrap">
-      <div class="table-header">
-        <div class="table-header-left">
-          <div class="search-bar">
-            <span style="color:var(--muted);font-size:16px">⌕</span>
-            <input type="text" placeholder="Buscar por folio, empresa, RFC, concepto..." id="search-input" oninput="debounceSearch(this.value)">
-          </div>
-          <div class="filters">
-            <select onchange="filtrar('tipo',this.value)">
-              <option value="">Todas</option>
-              <option value="emitida">Emitidas</option>
-              <option value="recibida">Recibidas</option>
-            </select>
-            <select onchange="filtrar('mes',this.value)">
-              <option value="">Todos los meses</option>
-              ${MESES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
-            </select>
-            <select onchange="filtrar('anio',this.value)">
-              <option value="">Todos los años</option>
-              <option value="2025">2025</option>
-              <option value="2024">2024</option>
-            </select>
-            <select onchange="filtrar('estado',this.value)">
-              <option value="">Todos los estados</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="pagada">Pagada</option>
-              <option value="cancelada">Cancelada</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="abrirModalFactura()">+ Agregar</button>
-      </div>
-      <div id="facturas-tabla-body"></div>
-    </div>
-  `;
-  await cargarYRenderFacturas();
-}
-
-async function cargarYRenderFacturas() {
-  const f = state.filtros;
-  let url = `/api/facturas?usuario_id=${state.usuarioId}`;
-  if (f.q) url += `&q=${encodeURIComponent(f.q)}`;
-  if (f.tipo) url += `&tipo=${f.tipo}`;
-  if (f.mes) url += `&mes=${f.mes}`;
-  if (f.anio) url += `&anio=${f.anio}`;
-  if (f.estado) url += `&estado=${f.estado}`;
-
-  const res = await fetch(url);
-  state.facturas = await res.json();
-  renderTablaFacturas(state.facturas);
-}
-
-function renderTablaFacturas(facturas) {
-  const el = document.getElementById('facturas-tabla-body');
-  if (!el) return;
-  if (!facturas.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">◧</div><p>No se encontraron facturas</p></div>';
-    return;
-  }
-  el.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Folio</th><th>Fecha</th><th>Tipo</th><th>Empresa</th>
-          <th>RFC</th><th>Concepto</th><th>Subtotal</th><th>IVA</th>
-          <th>Total</th><th>Estado</th><th>Conciliada</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${facturas.map(f => `
-          <tr>
-            <td class="text-mono text-sm">${f.folio || '—'}</td>
-            <td class="text-sm text-muted">${f.fecha_emision ? f.fecha_emision.slice(0,10) : '—'}</td>
-            <td>${f.tipo === 'emitida' ? '<span class="badge badge-ok">Emitida</span>' : '<span class="badge badge-purple">Recibida</span>'}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">
-              ${f.tipo==='emitida'?(f.nombre_receptor||'—'):(f.nombre_emisor||'—')}
-            </td>
-            <td class="text-mono text-xs text-muted">${f.tipo==='emitida'?(f.rfc_receptor||'—'):(f.rfc_emisor||'—')}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">${f.concepto||'—'}</td>
-            <td class="text-mono text-sm">${fmt(f.subtotal)}</td>
-            <td class="text-mono text-sm">${fmt(f.iva)}</td>
-            <td class="text-mono" style="font-weight:500">${fmt(f.total)}</td>
-            <td>${badgeEstado(f.estado_pago)}</td>
-            <td>${badgeConciliada(f)}</td>
-            <td>
-              <button class="btn btn-ghost btn-icon btn-sm" title="Eliminar" onclick="eliminarFactura(${f.id})">✕</button>
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-// ─── BANCO ────────────────────────────────────────────────────────────────
-async function renderBanco() {
-  const content = document.getElementById('content');
-  content.innerHTML = `
-    <!-- SUBIR ESTADO DE CUENTA -->
-    <div class="table-wrap" style="padding:24px;margin-bottom:20px">
-      <div class="section-title" style="margin-bottom:4px">Estado de Cuenta</div>
-      <div class="text-sm text-muted" style="margin-bottom:20px">Sube el PDF o foto de tu estado de cuenta — la IA lee todos los movimientos y los registra automáticamente</div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="form-group">
-          <label class="form-label">Banco</label>
-          <input class="form-input" id="ia-banco" placeholder="Ej. BBVA, Banamex, HSBC">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Año</label>
-          <select class="form-input" id="edo-anio">
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Mes</label>
-          <select class="form-input" id="edo-mes">
-            ${MESES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-
-      <div class="upload-zone" onclick="document.getElementById('ia-edo-file').click()">
-        <div class="upload-icon">⬆</div>
-        <div class="upload-title">Arrastra o selecciona el estado de cuenta</div>
-        <div class="upload-sub">PDF · JPG · PNG — La IA extrae todos los movimientos automáticamente</div>
-        <input type="file" id="ia-edo-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="analizarEstadoCuentaIA(this)">
-      </div>
-      <div id="ia-resultado" style="margin-top:14px"></div>
-
-      <hr style="margin:20px 0">
-
-      <div class="section-title" style="font-size:13px;margin-bottom:8px">¿Tienes CSV del banco?</div>
-      <div class="text-sm text-muted" style="margin-bottom:10px">Formato: fecha, descripcion, monto (+/-), saldo</div>
-      <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-        ↑ Importar CSV
-        <input type="file" id="btn-import-csv" accept=".csv" style="display:none" onchange="importarCSV(this)">
-      </label>
-      <div id="csv-result" style="margin-top:8px"></div>
-    </div>
-
-    <div class="table-wrap">
-      <div class="table-header">
-        <div class="table-header-left">
-          <span class="section-title" style="font-size:14px">Movimientos registrados</span>
-          <div class="filters">
-            <select onchange="filtrarBanco('mes',this.value)">
-              <option value="">Todos los meses</option>
-              ${MESES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
-            </select>
-            <select onchange="filtrarBanco('anio',this.value)">
-              <option value="">Todos los años</option>
-              <option value="2026">2026</option>
-              <option value="2025">2025</option>
-              <option value="2024">2024</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-movimiento').classList.add('open')">+ Agregar manual</button>
-      </div>
-      <div id="banco-tabla-body"><div class="empty-state"><span class="spinner"></span></div></div>
-    </div>
-  `;
-  await cargarYRenderBanco();
-}
-
-async function cargarYRenderBanco() {
-  let url = `/api/movimientos?usuario_id=${state.usuarioId}`;
-  if (state.filtros.mes) url += `&mes=${state.filtros.mes}`;
-  if (state.filtros.anio) url += `&anio=${state.filtros.anio}`;
-  const res = await fetch(url);
-  state.movimientos = await res.json();
-  const el = document.getElementById('banco-tabla-body');
-  if (!el) return;
-  if (!state.movimientos.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">◫</div><p>Sin movimientos. Importa un CSV o agrega manualmente.</p></div>';
-    return;
-  }
-  el.innerHTML = `
-    <table>
-      <thead>
-        <tr><th>Fecha</th><th>Descripción</th><th>Referencia</th><th>Tipo</th><th>Monto</th><th>Saldo</th><th>Conciliado</th></tr>
-      </thead>
-      <tbody>
-        ${state.movimientos.map(m => `
-          <tr>
-            <td class="text-sm text-muted">${m.fecha || '—'}</td>
-            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion || '—'}</td>
-            <td class="text-mono text-xs text-muted">${m.referencia || '—'}</td>
-            <td>${m.tipo === 'abono' ? '<span class="badge badge-ok">Abono</span>' : '<span class="badge badge-danger">Cargo</span>'}</td>
-            <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};font-weight:500">${fmt(m.monto)}</td>
-            <td class="text-mono text-sm text-muted">${m.saldo ? fmt(m.saldo) : '—'}</td>
-            <td>${m.conciliado ? '<span class="badge badge-ok">Sí</span>' : '<span class="badge badge-warn">No</span>'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-// ─── CONCILIACIÓN ─────────────────────────────────────────────────────────
-async function renderConciliacion() {
-  const content = document.getElementById('content');
-  content.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div class="section-title">Conciliación automática</div>
-        <div class="text-sm text-muted" style="margin-top:4px">Cruza facturas contra movimientos bancarios por monto y fecha</div>
-      </div>
-      <button class="btn btn-primary" onclick="ejecutarConciliacion()">◎ Ejecutar conciliación</button>
-    </div>
-    <div id="conc-resumen" style="margin-bottom:20px"></div>
-    <div class="table-wrap">
-      <div class="table-header">
-        <span class="section-title" style="font-size:13px">Detalle por factura</span>
-        <div class="filters">
-          <select onchange="filtrarConc('mes',this.value)">
-            <option value="">Todos los meses</option>
-            ${MESES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div id="conc-tabla"></div>
-    </div>
-  `;
-  await cargarConciliacion();
-}
-
-async function cargarConciliacion() {
-  const res = await fetch(`/api/conciliacion/resumen?usuario_id=${state.usuarioId}`);
-  const r = await res.json();
-
-  const resEl = document.getElementById('conc-resumen');
-  if (resEl) {
-    resEl.innerHTML = `
-      <div class="cards-grid">
-        <div class="stat-card" style="--accent-card:var(--accent)">
-          <div class="stat-label">Conciliadas</div>
-          <div class="stat-value">${r.conciliadas||0}</div>
-          <div class="stat-sub">de ${r.total_facturas||0}</div>
-        </div>
-        <div class="stat-card" style="--accent-card:var(--accent2)">
-          <div class="stat-label">Por cobrar</div>
-          <div class="stat-value" style="color:var(--accent2)">${fmt(r.por_cobrar||0)}</div>
-          <div class="stat-sub">Facturas emitidas sin pago</div>
-        </div>
-        <div class="stat-card" style="--accent-card:var(--danger)">
-          <div class="stat-label">Por pagar</div>
-          <div class="stat-value" style="color:var(--danger)">${fmt(r.por_pagar||0)}</div>
-          <div class="stat-sub">Facturas recibidas sin pagar</div>
-        </div>
-        <div class="stat-card" style="--accent-card:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">
-          <div class="stat-label">Balance</div>
-          <div class="stat-value" style="color:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">${fmt(r.balance||0)}</div>
-          <div class="stat-sub">Emitido − Recibido</div>
-        </div>
-      </div>
-    `;
-  }
-
-  const fRes = await fetch(`/api/facturas?usuario_id=${state.usuarioId}`);
-  const facturas = await fRes.json();
-  const el = document.getElementById('conc-tabla');
-  if (!el) return;
-  if (!facturas.length) {
-    el.innerHTML = '<div class="empty-state"><p>Sin facturas para conciliar</p></div>';
-    return;
-  }
-  el.innerHTML = `
-    <table>
-      <thead>
-        <tr><th>Folio</th><th>Fecha</th><th>Empresa</th><th>Tipo</th><th>Total factura</th><th>Mov. banco</th><th>Diferencia</th><th>Estado</th></tr>
-      </thead>
-      <tbody>
-        ${facturas.map(f => {
-          const movMonto = 0;
-          const diff = f.conciliada ? 0 : (f.tipo === 'emitida' ? -f.total : -f.total);
-          const statusBadge = f.conciliada
-            ? '<span class="badge badge-ok">Conciliada</span>'
-            : (f.tipo === 'emitida'
-              ? '<span class="badge badge-warn">Sin cobro</span>'
-              : '<span class="badge badge-danger">Sin pago</span>');
-          return `
-            <tr>
-              <td class="text-mono text-sm">${f.folio||'—'}</td>
-              <td class="text-sm text-muted">${f.fecha_emision?.slice(0,10)||'—'}</td>
-              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">
-                ${f.tipo==='emitida'?(f.nombre_receptor||'—'):(f.nombre_emisor||'—')}
-              </td>
-              <td>${f.tipo === 'emitida' ? '<span class="badge badge-ok">Emitida</span>' : '<span class="badge badge-purple">Recibida</span>'}</td>
-              <td class="text-mono">${fmt(f.total)}</td>
-              <td class="text-mono text-muted">${f.conciliada ? fmt(f.total) : '—'}</td>
-              <td class="${f.conciliada?'diff-zero':f.tipo==='emitida'?'diff-neg':'diff-neg'}">${f.conciliada ? '—' : fmt(-f.total)}</td>
-              <td>${statusBadge}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-async function ejecutarConciliacion() {
-  toast('Ejecutando conciliación automática...', 'info');
-  const res = await fetch('/api/conciliar', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({usuario_id: state.usuarioId})
-  });
-  const data = await res.json();
-  toast(`✓ ${data.conciliados} facturas conciliadas`, 'success');
-  if (state.page === 'conciliacion') await cargarConciliacion();
-  if (state.page === 'dashboard') await renderDashboard();
-}
-
-// ─── REPORTES ─────────────────────────────────────────────────────────────
-async function renderReportes() {
-  const content = document.getElementById('content');
-  content.innerHTML = `
-    <div style="max-width:560px">
-      <div class="section-title" style="margin-bottom:6px">Exportar reporte Excel</div>
-      <div class="text-sm text-muted" style="margin-bottom:24px">Genera un .xlsx con 4 hojas: Resumen, Facturas, Estado de cuenta y Conciliación detallada.</div>
-      <div class="table-wrap" style="padding:24px">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Mes</label>
-            <select class="form-input" id="exp-mes">
-              <option value="">Todos los meses</option>
-              ${MESES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Año</label>
-            <select class="form-input" id="exp-anio">
-              <option value="">Todos los años</option>
-              <option value="2025">2025</option>
-              <option value="2024">2024</option>
-            </select>
-          </div>
-        </div>
-        <div style="margin-top:20px;display:flex;gap:12px;align-items:center">
-          <button class="btn btn-primary" onclick="exportarExcel()">
-            ↓ Descargar Excel
-          </button>
-          <span class="text-xs text-muted">Incluye: Resumen · Facturas · Estado de cuenta · Conciliación</span>
-        </div>
-      </div>
-      <div style="margin-top:24px">
-        <div class="section-title" style="margin-bottom:12px;font-size:13px">Vista previa del reporte</div>
-        <div id="reporte-preview"></div>
-      </div>
-    </div>
-  `;
-  // Preview summary
-  const res = await fetch(`/api/conciliacion/resumen?usuario_id=${state.usuarioId}`);
-  const r = await res.json();
-  document.getElementById('reporte-preview').innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Monto</th></tr></thead>
-        <tbody>
-          <tr><td>Facturas emitidas</td><td>${r.emitidas||0}</td><td class="text-mono">${fmt(r.total_emitido||0)}</td></tr>
-          <tr><td>Facturas recibidas</td><td>${r.recibidas||0}</td><td class="text-mono">${fmt(r.total_recibido||0)}</td></tr>
-          <tr><td>Conciliadas</td><td>${r.conciliadas||0}</td><td class="text-mono">${fmt(r.total_cobrado||0)}</td></tr>
-          <tr><td>Por cobrar</td><td>—</td><td class="text-mono" style="color:var(--accent2)">${fmt(r.por_cobrar||0)}</td></tr>
-          <tr><td>Por pagar</td><td>—</td><td class="text-mono" style="color:var(--danger)">${fmt(r.por_pagar||0)}</td></tr>
-          <tr style="border-top:1px solid var(--border2)">
-            <td style="font-weight:500">Balance neto</td>
-            <td>—</td>
-            <td class="text-mono" style="font-weight:500;color:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">${fmt(r.balance||0)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function exportarExcel() {
-  const mes = document.getElementById('exp-mes')?.value || '';
-  const anio = document.getElementById('exp-anio')?.value || '';
-  let url = `/api/exportar/excel?usuario_id=${state.usuarioId}`;
-  if (mes) url += `&mes=${mes}`;
-  if (anio) url += `&anio=${anio}`;
-  window.location.href = url;
-  toast('Generando Excel...', 'info');
-}
-
-// ─── FACTURAS ACTIONS ─────────────────────────────────────────────────────
-let uploadTipo = 'emitida';
-let searchTimeout = null;
-
-function abrirModalFactura() {
-  document.getElementById('modal-factura').classList.add('open');
-}
-
-function selectTipo(tipo, btn) {
-  uploadTipo = tipo;
-  document.querySelectorAll('.tipo-btn').forEach(b => {
-    b.className = b === btn ? 'btn btn-secondary btn-sm tipo-btn active' : 'btn btn-ghost btn-sm tipo-btn';
-  });
-}
-
-function switchModalTab(tab) {
-  document.getElementById('modal-tab-subir').style.display = tab === 'subir' ? '' : 'none';
-  document.getElementById('modal-tab-manual').style.display = tab === 'manual' ? '' : 'none';
-  document.querySelectorAll('#modal-factura .tab').forEach((t,i) => {
-    t.classList.toggle('active', (i===0&&tab==='subir')||(i===1&&tab==='manual'));
-  });
-}
-
-async function handleFiles(files) {
-  if (!files.length) return;
-  document.getElementById('upload-progress').style.display = '';
-  let done = 0;
-  for (const file of files) {
-    const fd = new FormData();
-    fd.append('archivo', file);
-    fd.append('usuario_id', state.usuarioId);
-    fd.append('tipo', uploadTipo);
-    try {
-      const res = await fetch('/api/facturas', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (res.ok) {
-        toast(`✓ ${file.name} — ${data.fuente_extraccion === 'ia' ? 'IA extrajo' : 'XML leído'}: ${data.nombre_emisor || data.folio}`, 'success');
-      } else {
-        toast(`✗ ${file.name}: ${data.error}`, 'error');
-      }
-    } catch(e) {
-      toast(`✗ Error subiendo ${file.name}`, 'error');
+async function leerINE(file){
+  if(!file)return;
+  const preview=document.getElementById('ine-preview');
+  preview.src=URL.createObjectURL(file);preview.style.display='block';
+  const st=document.getElementById('ine-status');
+  st.className='status-bar show loading';
+  st.innerHTML='<span class="spin">⟳</span> Leyendo INE con IA… un momento.';
+  try{
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+    const resp=await fetch('/api/leer-ine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:b64,mediaType:file.type||'image/jpeg'})});
+    const data=await resp.json();
+    if(data.error)throw new Error(data.error);
+    if(data.nombre)document.getElementById('nombre').value=data.nombre.toUpperCase();
+    if(data.fechaNac){
+      // Convert DD/MM/YYYY to YYYY-MM-DD for date input
+      const parts=data.fechaNac.split('/');
+      if(parts.length===3)document.getElementById('fechaNac').value=parts[2]+'-'+parts[1].padStart(2,'0')+'-'+parts[0].padStart(2,'0');
     }
-    done++;
-    const pct = Math.round(done / files.length * 100);
-    document.getElementById('progress-fill').style.width = pct + '%';
-    document.getElementById('upload-progress-pct').textContent = pct + '%';
+    if(data.curp)document.getElementById('curp').value=data.curp.toUpperCase();
+    if(data.rfc)document.getElementById('rfc').value=data.rfc.toUpperCase();
+    if(data.ine)document.getElementById('ine-num').value=data.ine;
+    if(data.domicilio)document.getElementById('domicilio').value=data.domicilio;
+    st.className='status-bar show ok';
+    st.innerHTML='✓ Datos extraídos del INE. Revisa y corrige si es necesario.';
+  }catch(err){
+    st.className='status-bar show err';
+    st.innerHTML='✗ No se pudo leer el INE automáticamente. Ingresa los datos manualmente.';
   }
-  setTimeout(() => {
-    cerrarModal('modal-factura');
-    document.getElementById('upload-progress').style.display = 'none';
-    document.getElementById('progress-fill').style.width = '0%';
-    if (state.page === 'facturas') cargarYRenderFacturas();
-    if (state.page === 'dashboard') renderDashboard();
-  }, 800);
 }
 
-function calcTotal() {
-  const s = parseFloat(document.getElementById('m-subtotal').value) || 0;
-  const i = parseFloat(document.getElementById('m-iva').value) || 0;
-  document.getElementById('m-total').value = (s + i).toFixed(2);
-}
+function setStep(n,state){const el=document.getElementById('step'+n);if(!el)return;el.className='step '+(state==='done'?'done':state==='active'?'active':'');el.querySelector('.step-icon').textContent=state==='done'?'✓':state==='active'?'◉':'⏳';}
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
-async function guardarManual() {
-  const data = {
-    usuario_id: state.usuarioId,
-    folio: document.getElementById('m-folio').value,
-    fecha_emision: document.getElementById('m-fecha').value,
-    rfc_emisor: document.getElementById('m-rfc-emisor').value,
-    nombre_emisor: document.getElementById('m-nombre-emisor').value,
-    rfc_receptor: document.getElementById('m-rfc-receptor').value,
-    nombre_receptor: document.getElementById('m-nombre-receptor').value,
-    subtotal: document.getElementById('m-subtotal').value,
-    iva: document.getElementById('m-iva').value,
-    total: document.getElementById('m-total').value,
-    tipo: document.getElementById('m-tipo').value,
-    concepto: document.getElementById('m-concepto').value,
+async function generarTodo(){
+  const p=parseFloat(document.getElementById('precio').value)||0;
+  const a=20000;
+  const e=parseFloat(document.getElementById('enganche').value)||0;
+  const f=Math.max(0,p-a-e);
+  const nombre=g('nombre').toUpperCase();
+  const depto=g('depto');
+  if(!nombre||!depto||!p){alert('Por favor completa al menos: Nombre, Número de departamento y Precio total.');return;}
+  
+  // Nombre invertido: si viene del INE en formato "APELLIDO1 APELLIDO2 NOMBRE", usarlo directo
+  // Si el usuario lo escribe en orden normal, invertir
+  const nombreInvertido = nombre; // El INE ya lo da en formato apellidos primero
+
+  const campos={
+    nombre,nombreInvertido,
+    curp:g('curp').toUpperCase(),rfc:g('rfc').toUpperCase(),
+    ine:g('ine-num'),domicilio:g('domicilio'),
+    fechaNac:fmtDate('fechaNac'),telefono:g('telefono'),
+    email:g('email'),estadoCivil:g('estadoCivil'),ocupacion:g('ocupacion'),
+    depto,nivel:g('nivel'),m2:g('m2')||'70',
+    precio:Math.round(p).toLocaleString('es-MX'),precioLetra:toLetra(p),
+    apartado:'20,000',apartadoLetra:'veinte mil pesos 00/100 M.N.',
+    enganche:Math.round(e).toLocaleString('es-MX'),engancheLetra:toLetra(e),
+    finiquito:Math.round(f).toLocaleString('es-MX'),finiquitoLetra:toLetra(f),
+    fechaApartado:fmtDate('fechaApartado'),fechaEnganche:fmtDate('fechaEnganche'),
+    fechaFiniquito:fmtDate('fechaFiniquito'),fechaContrato:fmtDate('fechaContrato'),
+    fechaEntrega:fmtDateCorta('fechaEntrega'),fechaGarantia:fmtDateCorta('fechaEntrega'),
   };
-  const res = await fetch('/api/facturas/manual', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
-  });
-  if (res.ok) {
-    toast('✓ Factura guardada', 'success');
-    cerrarModal('modal-factura');
-    if (state.page === 'facturas') cargarYRenderFacturas();
-    if (state.page === 'dashboard') renderDashboard();
-  } else {
-    toast('✗ Error guardando factura', 'error');
+
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('gen-btn').disabled=true;
+  for(let i=1;i<=7;i++)setStep(i,'');
+  try{
+    setStep(1,'active');await delay(300);
+    const resp=await fetch('/api/generar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(campos)});
+    setStep(1,'done');setStep(2,'active');await delay(400);
+    setStep(2,'done');setStep(3,'active');await delay(300);
+    setStep(3,'done');setStep(4,'active');await delay(300);
+    setStep(4,'done');setStep(5,'active');await delay(300);
+    setStep(5,'done');setStep(6,'active');await delay(300);
+    setStep(6,'done');setStep(7,'active');
+    const data=await resp.json();
+    setStep(7,'done');await delay(500);
+    document.getElementById('overlay').classList.remove('show');
+    document.getElementById('gen-btn').disabled=false;
+    if(data.error)throw new Error(data.error);
+    const sc=document.getElementById('success-card');
+    sc.classList.add('show');
+    document.getElementById('success-msg').innerHTML=`Los 6 documentos del <strong>Depto. ${depto}</strong> fueron subidos correctamente a Google Drive.<br><br><a class="drive-link" href="${data.folderUrl}" target="_blank">📁 Abrir carpeta en Google Drive →</a>`;
+    sc.scrollIntoView({behavior:'smooth'});
+  }catch(err){
+    document.getElementById('overlay').classList.remove('show');
+    document.getElementById('gen-btn').disabled=false;
+    alert('Error al generar los documentos: '+err.message);
   }
 }
-
-async function eliminarFactura(id) {
-  if (!confirm('¿Eliminar esta factura?')) return;
-  await fetch(`/api/facturas/${id}`, { method: 'DELETE' });
-  toast('Factura eliminada', 'info');
-  cargarYRenderFacturas();
-}
-
-// ─── BANCO ACTIONS ────────────────────────────────────────────────────────
-async function guardarMovimiento() {
-  const data = {
-    usuario_id: state.usuarioId,
-    fecha: document.getElementById('mov-fecha').value,
-    tipo: document.getElementById('mov-tipo').value,
-    descripcion: document.getElementById('mov-desc').value,
-    monto: document.getElementById('mov-monto').value,
-    referencia: document.getElementById('mov-ref').value,
-  };
-  const res = await fetch('/api/movimientos', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
-  });
-  if (res.ok) {
-    toast('✓ Movimiento guardado', 'success');
-    cerrarModal('modal-movimiento');
-    if (state.page === 'banco') cargarYRenderBanco();
-  }
-}
-
-async function importarCSV(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('archivo', file);
-  fd.append('usuario_id', state.usuarioId);
-  toast('Importando CSV...', 'info');
-  const res = await fetch('/api/movimientos/importar-csv', { method: 'POST', body: fd });
-  const data = await res.json();
-  if (res.ok) {
-    toast(`✓ ${data.importados} movimientos importados`, 'success');
-    if (state.page === 'banco') cargarYRenderBanco();
-  } else {
-    toast('✗ Error importando CSV', 'error');
-  }
-  input.value = '';
-}
-
-// ─── FILTERS ──────────────────────────────────────────────────────────────
-function filtrar(key, value) {
-  state.filtros[key] = value;
-  cargarYRenderFacturas();
-}
-
-function filtrarBanco(key, value) {
-  state.filtros[key] = value;
-  cargarYRenderBanco();
-}
-
-function filtrarConc(key, value) {
-  state.filtros[key] = value;
-  cargarConciliacion();
-}
-
-function debounceSearch(val) {
-  clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => { state.filtros.q = val; cargarYRenderFacturas(); }, 300);
-}
-
-// ─── UTILS ────────────────────────────────────────────────────────────────
-function fmt(n) {
-  return '$' + Number(n).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-function badgeEstado(estado) {
-  const map = { pendiente: 'badge-warn', pagada: 'badge-ok', cancelada: 'badge-danger' };
-  return `<span class="badge ${map[estado]||'badge-info'}">${estado||'—'}</span>`;
-}
-
-function badgeConciliada(f) {
-  if (f.conciliada) return '<span class="badge badge-ok">Sí</span>';
-  return f.tipo === 'emitida' ? '<span class="badge badge-warn">Sin cobro</span>' : '<span class="badge badge-danger">Sin pago</span>';
-}
-
-function cerrarModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-function toast(msg, type='info') {
-  const c = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = msg;
-  c.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
-}
-
-// Drag & drop
-const dz = document.getElementById('drop-zone');
-if (dz) {
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
-}
-
-// Close modal on overlay click
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
-});
-
-// ─── ESTADO DE CUENTA UPLOAD ─────────────────────────────────────────────
-async function subirEstadoCuenta(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const banco = document.getElementById('edo-banco').value || 'Banco';
-  const mes = document.getElementById('edo-mes').value;
-  const anio = document.getElementById('edo-anio').value;
-  const resultEl = document.getElementById('edo-upload-result');
-  resultEl.innerHTML = '<span class="spinner"></span> Subiendo...';
-  const fd = new FormData();
-  fd.append('archivo', file);
-  fd.append('usuario_id', state.usuarioId);
-  fd.append('banco', banco);
-  fd.append('mes', mes);
-  fd.append('anio', anio);
-  try {
-    const res = await fetch('/api/estados-cuenta/subir', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (res.ok) {
-      const driveMsg = data.drive?.ok ? ` · <span style="color:var(--accent)">✓ Drive: ${data.drive.nombre}</span>` : '';
-      resultEl.innerHTML = `<span class="badge badge-ok">✓ ${file.name} subido${driveMsg}</span>`;
-      toast(`✓ Estado de cuenta subido${data.drive?.ok ? ' y organizado en Drive' : ''}`, 'success');
-    } else {
-      resultEl.innerHTML = `<span class="badge badge-danger">✗ ${data.error}</span>`;
-    }
-  } catch(e) {
-    resultEl.innerHTML = '<span class="badge badge-danger">✗ Error subiendo archivo</span>';
-  }
-  input.value = '';
-}
-
-// ─── ANALIZAR ESTADO DE CUENTA IA ──────────────────────────────────────────
-async function analizarEstadoCuentaIA(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const banco = document.getElementById('ia-banco').value || 'Banco';
-  const resultEl = document.getElementById('ia-resultado');
-
-  resultEl.innerHTML = '<span class="spinner"></span> <span class="text-muted text-sm">Analizando con IA — puede tomar 15-30 segundos...</span>';
-
-  const fd = new FormData();
-  fd.append('archivo', file);
-  fd.append('usuario_id', state.usuarioId);
-  fd.append('banco', banco);
-
-  try {
-    const res = await fetch('/api/estados-cuenta/analizar-ia', { method: 'POST', body: fd });
-    const data = await res.json();
-
-    if (res.ok) {
-      const driveMsg = data.drive?.ok ? `<br><span style="color:var(--accent);font-size:11px">✓ Drive: ${data.drive.nombre}</span>` : '';
-      const msiMsg = data.msi_guardadas > 0 ? `
-        <div style="margin-top:10px;padding:10px;background:rgba(225,143,0,0.08);border-radius:var(--r);border:1px solid rgba(225,143,0,0.2)">
-          <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px">MSI DETECTADAS — ${data.msi_guardadas} compras a meses</div>
-          <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-            <div><span class="text-muted">Pago mensual total:</span> <strong>$${Number(data.pago_mensual_msi).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">Ver detalle en pestaña "MSI" del menú</div>
-        </div>` : '';
-      resultEl.innerHTML = `
-        <div style="background:var(--surface2);border-radius:var(--r);padding:14px;border:1px solid rgba(225,143,0,0.2)">
-          <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">${data.banco} — ${data.periodo}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-            <div><span class="text-muted">Saldo inicial:</span> <strong>$${Number(data.saldo_inicial).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-            <div><span class="text-muted">Saldo final:</span> <strong>$${Number(data.saldo_final).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-            <div><span class="text-muted">Movimientos encontrados:</span> <strong>${data.movimientos_extraidos}</strong></div>
-            <div><span class="text-muted">Guardados en sistema:</span> <strong>${data.movimientos_guardados}</strong></div>
-          </div>
-          ${msiMsg}
-          ${driveMsg}
-        </div>
-      `;
-      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} importados${data.msi_guardadas > 0 ? ` + ${data.msi_guardadas} MSI` : ''}`, 'success');
-      await cargarYRenderBanco();
-    } else {
-      resultEl.innerHTML = `<span class="badge badge-danger">✗ ${data.error}</span>`;
-      toast('Error analizando estado de cuenta', 'error');
-    }
-  } catch(e) {
-    resultEl.innerHTML = '<span class="badge badge-danger">✗ Error de conexión</span>';
-  }
-  input.value = '';
-}
-
-// ─── DRIVE ───────────────────────────────────────────────────────────────
-async function checkDriveStatus() {
-  try {
-    const res = await fetch('/api/drive/status');
-    const data = await res.json();
-    const el = document.getElementById('drive-status');
-    if (el) el.textContent = data.conectado ? '● Drive conectado' : '';
-    if (el && data.conectado) el.style.color = '#e18f00';
-    const info = document.getElementById('drive-info');
-    if (info) info.innerHTML = data.conectado
-      ? '<span class="badge badge-ok">Drive conectado</span>'
-      : '<span class="badge badge-warn">Drive no configurado — agrega GOOGLE_CREDENTIALS en Railway</span>';
-  } catch(e) {}
-}
-
-async function organizarDrive() {
-  toast('Organizando facturas en Drive...', 'info');
-  const res = await fetch('/api/drive/organizar', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({usuario_id: state.usuarioId})
-  });
-  const data = await res.json();
-  if (res.ok) {
-    toast('✓ ' + data.organizadas + ' facturas organizadas en Drive', 'success');
-  } else {
-    toast('Drive: ' + data.error, 'error');
-  }
-}
-
-// ─── MSI PAGE ────────────────────────────────────────────────────────────────
-async function renderMSI() {
-  const content = document.getElementById('content');
-  content.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
-
-  const [resMSI, resResumen] = await Promise.all([
-    fetch(`/api/msi?usuario_id=${state.usuarioId}`),
-    fetch(`/api/msi/resumen?usuario_id=${state.usuarioId}`)
-  ]);
-  const compras = await resMSI.json();
-  const resumen = await resResumen.json();
-
-  content.innerHTML = `
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Compras activas MSI</div>
-        <div class="stat-value">${resumen.compras_activas || 0}</div>
-        <div class="stat-sub">A meses sin intereses</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Deuda total MSI</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(resumen.total_deuda_msi || 0)}</div>
-        <div class="stat-sub">Saldo pendiente total</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Pago mensual MSI</div>
-        <div class="stat-value" style="color:var(--accent2)">${fmt(resumen.pago_mensual_msi || 0)}</div>
-        <div class="stat-sub">Lo que se cobra este mes</div>
-      </div>
-    </div>
-
-    <div class="table-wrap">
-      <div class="table-header">
-        <span class="section-title" style="font-size:14px">Detalle de compras a meses</span>
-        <span class="text-sm text-muted">Extraído automáticamente del estado de cuenta</span>
-      </div>
-      ${compras.length === 0 ? '<div class="empty-state"><div class="empty-icon">◑</div><p>Sin compras MSI — sube un estado de cuenta con tabla de meses sin intereses</p></div>' : `
-      <table>
-        <thead>
-          <tr>
-            <th>Descripción</th>
-            <th>Banco</th>
-            <th>Monto original</th>
-            <th>Mensualidad</th>
-            <th>Avance</th>
-            <th>Saldo pendiente</th>
-            <th>Meses restantes</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${compras.map(c => `
-            <tr>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.descripcion}</td>
-              <td class="text-sm text-muted">${c.banco || '—'}</td>
-              <td class="text-mono">${fmt(c.monto_original)}</td>
-              <td class="text-mono" style="color:var(--accent2)">${fmt(c.mensualidad)}</td>
-              <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;min-width:60px">
-                    <div style="height:100%;width:${c.porcentaje_pagado}%;background:var(--accent);border-radius:99px"></div>
-                  </div>
-                  <span class="text-xs text-muted">${c.meses_pagados}/${c.meses_total}</span>
-                </div>
-              </td>
-              <td class="text-mono" style="color:var(--danger)">${fmt(c.saldo_pendiente)}</td>
-              <td>
-                <span class="badge ${c.meses_restantes <= 2 ? 'badge-warn' : 'badge-ok'}">${c.meses_restantes} meses</span>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`}
-    </div>
-  `;
-}
-
-// INIT
-init();
-checkDriveStatus();
 </script>
 </body>
 </html>
