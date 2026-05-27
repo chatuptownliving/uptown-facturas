@@ -677,6 +677,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <button class="nav-item" onclick="setPage('conciliacion')">
         <span class="icon">⇄</span> Conciliación
       </button>
+      <button class="nav-item" onclick="setPage('msi')">
+        <span class="icon">◑</span> MSI
+      </button>
       <button class="nav-item" onclick="setPage('reportes')">
         <span class="icon">◉</span> Reportes
       </button>
@@ -911,9 +914,9 @@ function cambiarUsuario(id) {
 function setPage(page) {
   state.page = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const idx = ['dashboard','facturas','banco','conciliacion','reportes'].indexOf(page);
+  const idx = ['dashboard','facturas','banco','conciliacion','msi','reportes'].indexOf(page);
   document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
-  const titles = { dashboard: 'Dashboard', facturas: 'Facturas', banco: 'Estado de Cuenta', conciliacion: 'Conciliación', reportes: 'Reportes' };
+  const titles = { dashboard: 'Dashboard', facturas: 'Facturas', banco: 'Estado de Cuenta', conciliacion: 'Conciliación', msi: 'Compras a Meses', reportes: 'Reportes' };
   document.getElementById('page-title').textContent = titles[page] || page;
   renderPage();
 }
@@ -926,6 +929,7 @@ async function renderPage() {
     case 'facturas': await renderFacturas(); break;
     case 'banco': await renderBanco(); break;
     case 'conciliacion': await renderConciliacion(); break;
+    case 'msi': await renderMSI(); break;
     case 'reportes': await renderReportes(); break;
   }
 }
@@ -1673,6 +1677,14 @@ async function analizarEstadoCuentaIA(input) {
 
     if (res.ok) {
       const driveMsg = data.drive?.ok ? `<br><span style="color:var(--accent);font-size:11px">✓ Drive: ${data.drive.nombre}</span>` : '';
+      const msiMsg = data.msi_guardadas > 0 ? `
+        <div style="margin-top:10px;padding:10px;background:rgba(225,143,0,0.08);border-radius:var(--r);border:1px solid rgba(225,143,0,0.2)">
+          <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px">MSI DETECTADAS — ${data.msi_guardadas} compras a meses</div>
+          <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <div><span class="text-muted">Pago mensual total:</span> <strong>$${Number(data.pago_mensual_msi).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Ver detalle en pestaña "MSI" del menú</div>
+        </div>` : '';
       resultEl.innerHTML = `
         <div style="background:var(--surface2);border-radius:var(--r);padding:14px;border:1px solid rgba(225,143,0,0.2)">
           <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">${data.banco} — ${data.periodo}</div>
@@ -1682,10 +1694,11 @@ async function analizarEstadoCuentaIA(input) {
             <div><span class="text-muted">Movimientos encontrados:</span> <strong>${data.movimientos_extraidos}</strong></div>
             <div><span class="text-muted">Guardados en sistema:</span> <strong>${data.movimientos_guardados}</strong></div>
           </div>
+          ${msiMsg}
           ${driveMsg}
         </div>
       `;
-      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} importados`, 'success');
+      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} importados${data.msi_guardadas > 0 ? ` + ${data.msi_guardadas} MSI` : ''}`, 'success');
       await cargarYRenderBanco();
     } else {
       resultEl.innerHTML = `<span class="badge badge-danger">✗ ${data.error}</span>`;
@@ -1725,6 +1738,82 @@ async function organizarDrive() {
   } else {
     toast('Drive: ' + data.error, 'error');
   }
+}
+
+// ─── MSI PAGE ────────────────────────────────────────────────────────────────
+async function renderMSI() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+
+  const [resMSI, resResumen] = await Promise.all([
+    fetch(`/api/msi?usuario_id=${state.usuarioId}`),
+    fetch(`/api/msi/resumen?usuario_id=${state.usuarioId}`)
+  ]);
+  const compras = await resMSI.json();
+  const resumen = await resResumen.json();
+
+  content.innerHTML = `
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Compras activas MSI</div>
+        <div class="stat-value">${resumen.compras_activas || 0}</div>
+        <div class="stat-sub">A meses sin intereses</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--danger)">
+        <div class="stat-label">Deuda total MSI</div>
+        <div class="stat-value" style="color:var(--danger)">${fmt(resumen.total_deuda_msi || 0)}</div>
+        <div class="stat-sub">Saldo pendiente total</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent2)">
+        <div class="stat-label">Pago mensual MSI</div>
+        <div class="stat-value" style="color:var(--accent2)">${fmt(resumen.pago_mensual_msi || 0)}</div>
+        <div class="stat-sub">Lo que se cobra este mes</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-header">
+        <span class="section-title" style="font-size:14px">Detalle de compras a meses</span>
+        <span class="text-sm text-muted">Extraído automáticamente del estado de cuenta</span>
+      </div>
+      ${compras.length === 0 ? '<div class="empty-state"><div class="empty-icon">◑</div><p>Sin compras MSI — sube un estado de cuenta con tabla de meses sin intereses</p></div>' : `
+      <table>
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th>Banco</th>
+            <th>Monto original</th>
+            <th>Mensualidad</th>
+            <th>Avance</th>
+            <th>Saldo pendiente</th>
+            <th>Meses restantes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${compras.map(c => `
+            <tr>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.descripcion}</td>
+              <td class="text-sm text-muted">${c.banco || '—'}</td>
+              <td class="text-mono">${fmt(c.monto_original)}</td>
+              <td class="text-mono" style="color:var(--accent2)">${fmt(c.mensualidad)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="flex:1;height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;min-width:60px">
+                    <div style="height:100%;width:${c.porcentaje_pagado}%;background:var(--accent);border-radius:99px"></div>
+                  </div>
+                  <span class="text-xs text-muted">${c.meses_pagados}/${c.meses_total}</span>
+                </div>
+              </td>
+              <td class="text-mono" style="color:var(--danger)">${fmt(c.saldo_pendiente)}</td>
+              <td>
+                <span class="badge ${c.meses_restantes <= 2 ? 'badge-warn' : 'badge-ok'}">${c.meses_restantes} meses</span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`}
+    </div>
+  `;
 }
 
 // INIT
