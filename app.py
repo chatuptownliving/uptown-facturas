@@ -402,7 +402,40 @@ def subir_factura():
         datos = extraer_datos_ia(contenido, ext, filename)
     if 'error' in datos:
         return jsonify({'error': f'Error extrayendo datos: {datos["error"]}'}), 422
+
+    # ── Detección de duplicados ──
     fecha = datos.get('fecha_emision')
+    total = datos.get('total', 0)
+    rfc_emisor = datos.get('rfc_emisor', '')
+    uuid_cfdi = datos.get('uuid_cfdi', '')
+
+    # Verificar por UUID (el más confiable)
+    if uuid_cfdi:
+        existente = Factura.query.filter_by(usuario_id=usuario_id, uuid_cfdi=uuid_cfdi).first()
+        if existente:
+            return jsonify({
+                'duplicado': True,
+                'id_existente': existente.id,
+                'folio': existente.folio,
+                'mensaje': f'Factura duplicada — UUID ya registrado (folio {existente.folio})'
+            }), 409
+
+    # Verificar por RFC + total + fecha (para PDFs/imágenes sin UUID)
+    if fecha and total and rfc_emisor:
+        existente = Factura.query.filter_by(
+            usuario_id=usuario_id,
+            rfc_emisor=rfc_emisor,
+            fecha_emision=fecha,
+            total=total
+        ).first()
+        if existente:
+            return jsonify({
+                'duplicado': True,
+                'id_existente': existente.id,
+                'folio': existente.folio,
+                'mensaje': f'Posible duplicado — misma empresa, fecha y monto (folio {existente.folio})'
+            }), 409
+
     factura = Factura(
         usuario_id=usuario_id, tipo=tipo,
         folio=datos.get('folio', ''), uuid_cfdi=datos.get('uuid_cfdi', ''),
@@ -679,6 +712,53 @@ Responde SOLO el JSON"""
         }), 201
     except Exception as e:
         return jsonify({'error': f'Error analizando: {str(e)}'}), 422
+
+# ─── CONCILIACIÓN COMPARATIVA ───────────────────────────────────────────────
+
+@app.route('/api/conciliacion/comparativa', methods=['GET'])
+def conciliacion_comparativa():
+    """Compara facturas contra movimientos del estado de cuenta."""
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    mes = request.args.get('mes', type=int)
+    anio = request.args.get('anio', type=int)
+
+    qf = Factura.query.filter_by(usuario_id=usuario_id)
+    qm = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
+    if mes:
+        qf = qf.filter_by(mes=mes)
+        qm = qm.filter_by(mes=mes)
+    if anio:
+        qf = qf.filter_by(anio=anio)
+        qm = qm.filter_by(anio=anio)
+
+    facturas = qf.all()
+    movimientos = qm.all()
+
+    total = len(facturas)
+    conciliadas = sum(1 for f in facturas if f.conciliada)
+    sin_match = total - conciliadas
+
+    # Facturas sin movimiento correspondiente
+    pendientes = []
+    for f in facturas:
+        if not f.conciliada:
+            pendientes.append({
+                'id': f.id,
+                'folio': f.folio,
+                'empresa': f.nombre_emisor if f.tipo == 'recibida' else f.nombre_receptor,
+                'total': f.total,
+                'fecha': f.fecha_emision.isoformat() if f.fecha_emision else None,
+                'tipo': f.tipo
+            })
+
+    return jsonify({
+        'total_facturas': total,
+        'conciliadas': conciliadas,
+        'sin_match': sin_match,
+        'total_movimientos': len(movimientos),
+        'movimientos_conciliados': sum(1 for m in movimientos if m.conciliado),
+        'pendientes': pendientes[:20]  # max 20
+    })
 
 # ─── CONCILIACIÓN ────────────────────────────────────────────────────────────
 
