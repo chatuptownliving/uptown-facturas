@@ -1440,6 +1440,20 @@ async function renderReportes() {
         <div class="section-title" style="margin-bottom:12px;font-size:13px">Vista previa del reporte</div>
         <div id="reporte-preview"></div>
       </div>
+
+      <div style="margin-top:32px;padding:20px;border:1px solid rgba(240,112,112,0.2);border-radius:var(--r-lg);background:rgba(240,112,112,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div>
+            <div style="font-family:var(--font-head);font-size:14px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:0.05em">Zona de pruebas — Resetear datos</div>
+            <div class="text-sm text-muted" style="margin-top:2px">Borra todas las facturas, movimientos y MSI. Requiere contraseña.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input class="form-input" id="reset-password" type="password" placeholder="Contraseña de reset" style="max-width:240px">
+          <button class="btn btn-danger" onclick="resetearDatos()">🗑 Borrar todo</button>
+        </div>
+        <div id="reset-result" style="margin-top:10px"></div>
+      </div>
     </div>
   `;
   // Preview summary
@@ -1885,6 +1899,37 @@ async function renderMSI() {
       </div>
     </div>`}
   `;
+}
+
+// ─── RESET ───────────────────────────────────────────────────────────────────
+async function resetearDatos() {
+  const password = document.getElementById('reset-password').value;
+  if (!password) { toast('Ingresa la contraseña', 'error'); return; }
+
+  if (!confirm('¿Seguro que quieres borrar TODOS los datos? Esta acción no se puede deshacer.')) return;
+
+  const resultEl = document.getElementById('reset-result');
+  resultEl.innerHTML = '<span class="spinner"></span> Borrando...';
+
+  try {
+    const res = await fetch('/api/reset', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({password})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultEl.innerHTML = '<span class="badge badge-ok">✓ ' + data.mensaje + '</span>';
+      toast('✓ Todos los datos eliminados', 'success');
+      document.getElementById('reset-password').value = '';
+      setTimeout(() => setPage('dashboard'), 1500);
+    } else {
+      resultEl.innerHTML = '<span class="badge badge-danger">✗ ' + data.error + '</span>';
+      toast('✗ ' + data.error, 'error');
+    }
+  } catch(e) {
+    resultEl.innerHTML = '<span class="badge badge-danger">✗ Error de conexión</span>';
+  }
 }
 
 // INIT
