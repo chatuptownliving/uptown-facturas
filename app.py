@@ -67,6 +67,7 @@ class Factura(db.Model):
     conciliada = db.Column(db.Boolean, default=False)
     movimiento_id = db.Column(db.Integer, db.ForeignKey('movimiento_bancario.id'), nullable=True)
     notas_ia = db.Column(db.Text)
+    tarjeta = db.Column(db.String(50))  # konfio / santander / desconocida
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class MovimientoBancario(db.Model):
@@ -82,6 +83,7 @@ class MovimientoBancario(db.Model):
     saldo = db.Column(db.Float, nullable=True)
     conciliado = db.Column(db.Boolean, default=False)
     factura_id = db.Column(db.Integer, nullable=True)
+    tarjeta = db.Column(db.String(50))  # konfio / santander / desconocida
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     facturas = db.relationship('Factura', backref='movimiento', foreign_keys=[Factura.movimiento_id])
 
@@ -120,6 +122,7 @@ class CierreMensual(db.Model):
     facturas_registradas = db.Column(db.Integer, default=0)
     facturas_con_match = db.Column(db.Integer, default=0)
     resumen_json = db.Column(db.Text)  # JSON con detalle completo
+    tarjeta = db.Column(db.String(50))  # konfio / santander
     cerrado = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -141,6 +144,57 @@ def nombre_archivo_drive(factura, ext):
     empresa = limpiar_nombre(empresa) if empresa else 'Desconocido'
     fecha_str = factura.fecha_emision.strftime('%Y-%m-%d') if factura.fecha_emision else 'sin-fecha'
     return f"{empresa}_{fecha_str}.{ext}"
+
+# ─── HELPERS TARJETA ─────────────────────────────────────────────────────────
+
+def detectar_tarjeta(banco):
+    """Detecta el nombre normalizado de la tarjeta."""
+    if not banco:
+        return 'desconocida'
+    b = banco.lower()
+    if any(k in b for k in ['konfio', 'konfío', 'red amigo', 'dal']):
+        return 'konfio'
+    if any(k in b for k in ['santander', 'snt', 'bansantan']):
+        return 'santander'
+    if any(k in b for k in ['bbva', 'bancomer']):
+        return 'bbva'
+    if any(k in b for k in ['banamex', 'citibanamex']):
+        return 'banamex'
+    if any(k in b for k in ['hsbc']):
+        return 'hsbc'
+    return banco.lower().replace(' ', '_')[:20]
+
+def asignar_tarjeta_factura(factura, usuario_id):
+    """
+    Intenta asignar tarjeta a una factura buscando el movimiento
+    que mejor coincida por monto y fecha en ambas tarjetas.
+    """
+    if not factura.total or not factura.fecha_emision:
+        return 'desconocida'
+
+    # Buscar movimiento con monto igual (±2%) en ventana de 60 días
+    movimientos = MovimientoBancario.query.filter_by(
+        usuario_id=usuario_id,
+        tipo='cargo'
+    ).filter(
+        MovimientoBancario.tarjeta.isnot(None)
+    ).all()
+
+    mejor = None
+    mejor_diff = float('inf')
+    for m in movimientos:
+        if not m.fecha or not m.tarjeta:
+            continue
+        dias = abs((factura.fecha_emision - m.fecha).days)
+        if dias > 60:
+            continue
+        diff = abs(m.monto - factura.total)
+        tolerancia = factura.total * 0.02
+        if diff <= tolerancia and diff < mejor_diff:
+            mejor_diff = diff
+            mejor = m
+
+    return mejor.tarjeta if mejor else 'desconocida'
 
 # ─── EXTRACCIÓN XML ─────────────────────────────────────────────────────────
 
@@ -270,8 +324,11 @@ def organizar_factura_drive(service, factura, contenido_bytes, ext):
     try:
         root_id = os.environ.get('DRIVE_FOLDER_ID')
         carpeta_facturas = buscar_o_crear_carpeta(service, 'Facturas', root_id)
+        # Subcarpeta por tarjeta
+        tarjeta_nombre = (factura.tarjeta or 'Desconocida').replace('_',' ').title()
+        carpeta_tarjeta = buscar_o_crear_carpeta(service, tarjeta_nombre, carpeta_facturas)
         anio_str = str(factura.anio) if factura.anio else 'Sin_Fecha'
-        carpeta_anio = buscar_o_crear_carpeta(service, anio_str, carpeta_facturas)
+        carpeta_anio = buscar_o_crear_carpeta(service, anio_str, carpeta_tarjeta)
         mes_str = MESES_NOMBRE[factura.mes] if factura.mes else 'Sin_Mes'
         carpeta_mes = buscar_o_crear_carpeta(service, mes_str, carpeta_anio)
         nombre = nombre_archivo_drive(factura, ext)
@@ -391,6 +448,8 @@ def get_facturas():
     if estado: query = query.filter_by(estado_pago=estado)
     if conciliada is not None:
         query = query.filter_by(conciliada=(conciliada == 'true'))
+    tarjeta = request.args.get('tarjeta', '')
+    if tarjeta: query = query.filter_by(tarjeta=tarjeta)
     facturas = query.order_by(Factura.fecha_emision.desc()).all()
     return jsonify([{
         'id': f.id, 'folio': f.folio, 'uuid_cfdi': f.uuid_cfdi,
@@ -402,7 +461,7 @@ def get_facturas():
         'total': f.total, 'moneda': f.moneda, 'tipo': f.tipo,
         'estado_pago': f.estado_pago, 'conciliada': f.conciliada,
         'archivo_nombre': f.archivo_nombre, 'archivo_tipo': f.archivo_tipo,
-        'drive_file_id': f.drive_file_id, 'notas_ia': f.notas_ia,
+        'drive_file_id': f.drive_file_id, 'notas_ia': f.notas_ia, 'tarjeta': f.tarjeta,
         'created_at': f.created_at.isoformat()
     } for f in facturas])
 
@@ -472,6 +531,12 @@ def subir_factura():
         notas_ia=f'Extraido por {"XML parser" if ext == "xml" else "IA (Claude)"}'
     )
     db.session.add(factura); db.session.commit()
+
+    # Auto-asignar tarjeta
+    tarjeta_detectada = asignar_tarjeta_factura(factura, usuario_id)
+    factura.tarjeta = tarjeta_detectada
+    db.session.commit()
+
     service = get_drive_service()
     drive_resultado = organizar_factura_drive(service, factura, contenido, ext) if service else None
     return jsonify({
@@ -479,6 +544,7 @@ def subir_factura():
         'fecha_emision': factura.fecha_emision.isoformat() if factura.fecha_emision else None,
         'nombre_emisor': factura.nombre_emisor, 'nombre_receptor': factura.nombre_receptor,
         'tipo': factura.tipo, 'fuente_extraccion': datos.get('fuente', 'desconocida'),
+        'tarjeta': tarjeta_detectada,
         'drive': drive_resultado
     }), 201
 
@@ -701,7 +767,8 @@ Responde SOLO el JSON"""
                     tipo=mov.get('tipo', 'cargo'),
                     monto=float(mov.get('monto', 0)),
                     saldo=float(mov.get('saldo', 0)) if mov.get('saldo') else None,
-                    referencia=f"{banco} - {mov.get('tarjetahabiente', '')}"
+                    referencia=f"{banco} - {mov.get('tarjetahabiente', '')}",
+                    tarjeta=detectar_tarjeta(banco)
                 )
                 db.session.add(m); movimientos_guardados += 1
             except: errores += 1
@@ -932,6 +999,47 @@ def exportar_excel():
     wb.save(output); output.seek(0)
     nombre = f'uptown_conciliacion_{anio or "all"}_{mes or "all"}.xlsx'
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nombre)
+
+# ─── DASHBOARD POR TARJETA ───────────────────────────────────────────────────
+
+@app.route('/api/dashboard/tarjetas', methods=['GET'])
+def dashboard_tarjetas():
+    """Resumen del dashboard separado por tarjeta."""
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    mes = request.args.get('mes', type=int)
+    anio = request.args.get('anio', type=int)
+
+    # Obtener todas las tarjetas con movimientos
+    q = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
+    if mes: q = q.filter_by(mes=mes)
+    if anio: q = q.filter_by(anio=anio)
+    movimientos = q.all()
+
+    tarjetas = {}
+    for m in movimientos:
+        t = m.tarjeta or 'desconocida'
+        if t not in tarjetas:
+            tarjetas[t] = {
+                'nombre': t.replace('_',' ').title(),
+                'total_movimientos': 0,
+                'total_cargos': 0.0,
+                'total_abonos': 0.0,
+                'movimientos_msi': 0,
+                'monto_msi': 0.0,
+                'facturas_con_match': 0,
+            }
+        tarjetas[t]['total_movimientos'] += 1
+        if m.tipo == 'cargo':
+            tarjetas[t]['total_cargos'] += m.monto
+            if any(k in (m.descripcion or '').upper() for k in ['A MESES','MSI','MCI']):
+                tarjetas[t]['movimientos_msi'] += 1
+                tarjetas[t]['monto_msi'] += m.monto
+        else:
+            tarjetas[t]['total_abonos'] += m.monto
+        if m.conciliado:
+            tarjetas[t]['facturas_con_match'] += 1
+
+    return jsonify(list(tarjetas.values()))
 
 # ─── CIERRE MENSUAL ──────────────────────────────────────────────────────────
 
