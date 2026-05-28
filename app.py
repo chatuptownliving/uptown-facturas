@@ -101,6 +101,28 @@ class ComprasMSI(db.Model):
     activa = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ─── MODELO CIERRE MENSUAL ──────────────────────────────────────────────────
+
+class CierreMensual(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    banco = db.Column(db.String(100))
+    periodo = db.Column(db.String(50))
+    total_movimientos = db.Column(db.Integer, default=0)
+    total_cargos = db.Column(db.Float, default=0)
+    total_abonos = db.Column(db.Float, default=0)
+    movimientos_msi = db.Column(db.Integer, default=0)
+    monto_msi = db.Column(db.Float, default=0)
+    movimientos_contado = db.Column(db.Integer, default=0)
+    monto_contado = db.Column(db.Float, default=0)
+    facturas_registradas = db.Column(db.Integer, default=0)
+    facturas_con_match = db.Column(db.Integer, default=0)
+    resumen_json = db.Column(db.Text)  # JSON con detalle completo
+    cerrado = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 # ─── HELPERS ────────────────────────────────────────────────────────────────
 
 def allowed_file(filename):
@@ -911,6 +933,93 @@ def exportar_excel():
     nombre = f'uptown_conciliacion_{anio or "all"}_{mes or "all"}.xlsx'
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nombre)
 
+# ─── CIERRE MENSUAL ──────────────────────────────────────────────────────────
+
+@app.route('/api/cierres', methods=['GET'])
+def get_cierres():
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    cierres = CierreMensual.query.filter_by(usuario_id=usuario_id).order_by(
+        CierreMensual.anio.desc(), CierreMensual.mes.desc()
+    ).all()
+    return jsonify([{
+        'id': c.id,
+        'mes': c.mes,
+        'anio': c.anio,
+        'banco': c.banco,
+        'periodo': c.periodo,
+        'total_movimientos': c.total_movimientos,
+        'total_cargos': c.total_cargos,
+        'total_abonos': c.total_abonos,
+        'movimientos_msi': c.movimientos_msi,
+        'monto_msi': c.monto_msi,
+        'movimientos_contado': c.movimientos_contado,
+        'monto_contado': c.monto_contado,
+        'facturas_registradas': c.facturas_registradas,
+        'facturas_con_match': c.facturas_con_match,
+        'porcentaje_facturas': round(c.facturas_con_match / c.total_movimientos * 100, 1) if c.total_movimientos > 0 else 0,
+        'cerrado': c.cerrado,
+        'created_at': c.created_at.isoformat()
+    } for c in cierres])
+
+@app.route('/api/cierres/<int:cierre_id>', methods=['GET'])
+def get_cierre_detalle(cierre_id):
+    cierre = CierreMensual.query.get_or_404(cierre_id)
+    # Obtener movimientos del mes
+    movs = MovimientoBancario.query.filter_by(
+        usuario_id=cierre.usuario_id, mes=cierre.mes, anio=cierre.anio
+    ).all()
+    facturas = Factura.query.filter_by(
+        usuario_id=cierre.usuario_id, mes=cierre.mes, anio=cierre.anio
+    ).all()
+
+    # Movimientos sin factura correspondiente
+    movs_sin_factura = []
+    for m in movs:
+        if m.tipo == 'cargo' and not m.conciliado:
+            movs_sin_factura.append({
+                'fecha': m.fecha.isoformat() if m.fecha else None,
+                'descripcion': m.descripcion,
+                'monto': m.monto,
+                'referencia': m.referencia,
+                'es_msi': any(kw in (m.descripcion or '').upper() for kw in ['A MESES','MSI','MCI'])
+            })
+
+    return jsonify({
+        'id': cierre.id,
+        'mes': cierre.mes,
+        'anio': cierre.anio,
+        'banco': cierre.banco,
+        'periodo': cierre.periodo,
+        'total_movimientos': cierre.total_movimientos,
+        'total_cargos': cierre.total_cargos,
+        'total_abonos': cierre.total_abonos,
+        'movimientos_msi': cierre.movimientos_msi,
+        'monto_msi': cierre.monto_msi,
+        'movimientos_contado': cierre.movimientos_contado,
+        'monto_contado': cierre.monto_contado,
+        'facturas_registradas': len(facturas),
+        'facturas_con_match': sum(1 for f in facturas if f.conciliada),
+        'movimientos_sin_factura': movs_sin_factura,
+        'facturas': [{
+            'folio': f.folio,
+            'empresa': f.nombre_emisor if f.tipo=='recibida' else f.nombre_receptor,
+            'total': f.total,
+            'conciliada': f.conciliada
+        } for f in facturas],
+        'cerrado': cierre.cerrado
+    })
+
+@app.route('/api/cierres/<int:cierre_id>/actualizar-facturas', methods=['POST'])
+def actualizar_facturas_cierre(cierre_id):
+    cierre = CierreMensual.query.get_or_404(cierre_id)
+    facturas = Factura.query.filter_by(
+        usuario_id=cierre.usuario_id, mes=cierre.mes, anio=cierre.anio
+    ).all()
+    cierre.facturas_registradas = len(facturas)
+    cierre.facturas_con_match = sum(1 for f in facturas if f.conciliada)
+    db.session.commit()
+    return jsonify({'ok': True, 'facturas': cierre.facturas_registradas, 'con_match': cierre.facturas_con_match})
+
 # ─── RESET (SOLO PRUEBAS) ────────────────────────────────────────────────────
 
 @app.route('/api/reset', methods=['POST'])
@@ -920,6 +1029,7 @@ def reset_datos():
     if password != reset_key:
         return jsonify({'error': 'Contraseña incorrecta'}), 403
     try:
+        CierreMensual.query.delete()
         MovimientoBancario.query.delete()
         ComprasMSI.query.delete()
         Factura.query.delete()
