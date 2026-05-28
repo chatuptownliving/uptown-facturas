@@ -540,6 +540,7 @@ select:focus { border-color: var(--accent); }
 .toast.success { border-left: 3px solid #e18f00; }
 .toast.error { border-left: 3px solid var(--danger); }
 .toast.info { border-left: 3px solid var(--info); }
+.toast.warn { border-left: 3px solid var(--accent2); }
 
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(12px); }
@@ -986,20 +987,15 @@ async function renderDashboard() {
         <div class="stat-value">${movimientos.length}</div>
         <div class="stat-sub">${movimientos.filter(m=>m.tipo==='abono').length} abonos · ${movimientos.filter(m=>m.tipo==='cargo').length} cargos</div>
       </div>
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Total abonos</div>
-        <div class="stat-value" style="color:var(--accent)">${fmt(totalAbonos)}</div>
-        <div class="stat-sub">Entradas registradas</div>
-      </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Total cargos</div>
+        <div class="stat-label">Total gastado</div>
         <div class="stat-value" style="color:var(--danger)">${fmt(totalCargos)}</div>
-        <div class="stat-sub">Salidas registradas</div>
+        <div class="stat-sub">Cargos del periodo</div>
       </div>
-      <div class="stat-card" style="--accent-card:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">
-        <div class="stat-label">Flujo neto</div>
-        <div class="stat-value" style="color:${(totalAbonos-totalCargos)>=0?'var(--accent)':'var(--danger)'}">${fmt(totalAbonos-totalCargos)}</div>
-        <div class="stat-sub">Abonos − Cargos</div>
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Conciliados</div>
+        <div class="stat-value">${movimientos.filter(m=>m.conciliado).length}</div>
+        <div class="stat-sub">de ${movimientos.length} movimientos</div>
       </div>
     </div>
 
@@ -1287,11 +1283,20 @@ async function cargarYRenderBanco() {
 // ─── CONCILIACIÓN ─────────────────────────────────────────────────────────
 async function renderConciliacion() {
   const content = document.getElementById('content');
+  const resComp = await fetch(`/api/conciliacion/comparativa?usuario_id=${state.usuarioId}`);
+  const comp = await resComp.json();
+
   content.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <div>
         <div class="section-title">Conciliación automática</div>
-        <div class="text-sm text-muted" style="margin-top:4px">Cruza facturas contra movimientos bancarios por monto y fecha</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+          <div style="font-family:var(--font-head);font-size:28px;font-weight:800;color:var(--accent)">${comp.conciliadas||0}<span style="color:var(--muted);font-size:18px">/${comp.total_facturas||0}</span></div>
+          <div>
+            <div class="text-sm">facturas conciliadas</div>
+            <div class="text-xs text-muted">${comp.sin_match||0} sin match en estado de cuenta</div>
+          </div>
+        </div>
       </div>
       <button class="btn btn-primary" onclick="ejecutarConciliacion()">◎ Ejecutar conciliación</button>
     </div>
@@ -1506,7 +1511,9 @@ async function handleFiles(files) {
     try {
       const res = await fetch('/api/facturas', { method: 'POST', body: fd });
       const data = await res.json();
-      if (res.ok) {
+      if (res.status === 409 && data.duplicado) {
+        toast(`⚠ ${file.name} — DUPLICADO: ${data.mensaje}`, 'warn');
+      } else if (res.ok) {
         toast(`✓ ${file.name} — ${data.fuente_extraccion === 'ia' ? 'IA extrajo' : 'XML leído'}: ${data.nombre_emisor || data.folio}`, 'success');
       } else {
         toast(`✗ ${file.name}: ${data.error}`, 'error');
@@ -1795,67 +1802,88 @@ async function renderMSI() {
   const compras = await resMSI.json();
   const resumen = await resResumen.json();
 
+  const totalMensualidades = resumen.pago_mensual_msi || 0;
+  const totalDeuda = resumen.total_deuda_msi || 0;
+
   content.innerHTML = `
-    <div class="cards-grid" style="margin-bottom:20px">
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Resumen MSI</div>
+    <div class="cards-grid" style="margin-bottom:24px">
       <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Compras activas MSI</div>
+        <div class="stat-label">Compras activas</div>
         <div class="stat-value">${resumen.compras_activas || 0}</div>
         <div class="stat-sub">A meses sin intereses</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Deuda total MSI</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(resumen.total_deuda_msi || 0)}</div>
-        <div class="stat-sub">Saldo pendiente total</div>
+        <div class="stat-label">Deuda total</div>
+        <div class="stat-value" style="color:var(--danger)">${fmt(totalDeuda)}</div>
+        <div class="stat-sub">Saldo pendiente acumulado</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Pago mensual MSI</div>
-        <div class="stat-value" style="color:var(--accent2)">${fmt(resumen.pago_mensual_msi || 0)}</div>
-        <div class="stat-sub">Lo que se cobra este mes</div>
+        <div class="stat-label">Se cobra este mes</div>
+        <div class="stat-value" style="color:var(--accent2)">${fmt(totalMensualidades)}</div>
+        <div class="stat-sub">Suma de todas las mensualidades</div>
       </div>
     </div>
 
+    ${compras.length === 0 ? `
+      <div class="empty-state">
+        <div class="empty-icon">◑</div>
+        <p>Sin compras MSI registradas</p>
+        <div class="text-sm text-muted" style="margin-top:8px">Sube un estado de cuenta con tabla de Meses Sin Intereses para verlas aquí</div>
+      </div>` : `
     <div class="table-wrap">
       <div class="table-header">
-        <span class="section-title" style="font-size:14px">Detalle de compras a meses</span>
-        <span class="text-sm text-muted">Extraído automáticamente del estado de cuenta</span>
+        <span class="section-title" style="font-size:14px">Detalle por compra</span>
+        <span class="text-sm text-muted">Cada fila = una compra a meses detectada en tu estado de cuenta</span>
       </div>
-      ${compras.length === 0 ? '<div class="empty-state"><div class="empty-icon">◑</div><p>Sin compras MSI — sube un estado de cuenta con tabla de meses sin intereses</p></div>' : `
       <table>
         <thead>
           <tr>
             <th>Descripción</th>
             <th>Banco</th>
-            <th>Monto original</th>
+            <th>Compra original</th>
             <th>Mensualidad</th>
-            <th>Avance</th>
+            <th>Progreso de pago</th>
             <th>Saldo pendiente</th>
-            <th>Meses restantes</th>
+            <th>Estado</th>
           </tr>
         </thead>
         <tbody>
-          ${compras.map(c => `
+          ${compras.map(c => {
+            const alDia = c.meses_restantes > 0;
+            const casiFin = c.meses_restantes <= 2 && c.meses_restantes > 0;
+            return `
             <tr>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.descripcion}</td>
+              <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${c.descripcion}</td>
               <td class="text-sm text-muted">${c.banco || '—'}</td>
               <td class="text-mono">${fmt(c.monto_original)}</td>
-              <td class="text-mono" style="color:var(--accent2)">${fmt(c.mensualidad)}</td>
-              <td>
+              <td class="text-mono" style="color:var(--accent2);font-weight:500">${fmt(c.mensualidad)}<span class="text-xs text-muted">/mes</span></td>
+              <td style="min-width:160px">
                 <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;min-width:60px">
-                    <div style="height:100%;width:${c.porcentaje_pagado}%;background:var(--accent);border-radius:99px"></div>
+                  <div style="flex:1;height:8px;background:var(--surface2);border-radius:99px;overflow:hidden">
+                    <div style="height:100%;width:${c.porcentaje_pagado}%;background:${casiFin?'var(--accent2)':'var(--accent)'};border-radius:99px;transition:width 0.3s"></div>
                   </div>
-                  <span class="text-xs text-muted">${c.meses_pagados}/${c.meses_total}</span>
+                  <span class="text-xs text-muted" style="white-space:nowrap">${c.meses_pagados}/${c.meses_total} meses</span>
                 </div>
+                <div class="text-xs text-muted" style="margin-top:2px">${c.porcentaje_pagado}% pagado</div>
               </td>
-              <td class="text-mono" style="color:var(--danger)">${fmt(c.saldo_pendiente)}</td>
+              <td class="text-mono" style="color:var(--danger);font-weight:500">${fmt(c.saldo_pendiente)}</td>
               <td>
-                <span class="badge ${c.meses_restantes <= 2 ? 'badge-warn' : 'badge-ok'}">${c.meses_restantes} meses</span>
+                ${c.meses_restantes === 0
+                  ? '<span class="badge badge-ok">Liquidada</span>'
+                  : casiFin
+                  ? `<span class="badge badge-warn">Último${c.meses_restantes>1?'s':''} ${c.meses_restantes} mes${c.meses_restantes>1?'es':''}</span>`
+                  : `<span class="badge badge-info">${c.meses_restantes} restantes</span>`}
               </td>
-            </tr>
-          `).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
-      </table>`}
-    </div>
+      </table>
+      <div style="padding:12px 20px;background:var(--surface2);border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px">
+        <span class="text-muted">Total mensual comprometido:</span>
+        <span class="text-mono" style="color:var(--accent2);font-weight:600">${fmt(totalMensualidades)}</span>
+      </div>
+    </div>`}
   `;
 }
 
