@@ -881,7 +881,7 @@ let state = {
   facturas: [],
   movimientos: [],
   resumen: {},
-  filtros: { q: '', tipo: '', mes: '', anio: '', estado: '', conciliada: '' }
+  filtros: { q: '', tipo: '', mes: '', anio: '', estado: '', conciliada: '', tarjeta: '' }
 };
 
 const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -946,82 +946,96 @@ async function renderDashboard() {
   const r = await res.json();
   const content = document.getElementById('content');
 
-  // Fetch banco and MSI data in parallel
-  const [resBanco, resMSI] = await Promise.all([
+  // Fetch tarjetas, movimientos y MSI en paralelo
+  const [resTarjetas, resBanco, resMSI] = await Promise.all([
+    fetch(`/api/dashboard/tarjetas?usuario_id=${state.usuarioId}`),
     fetch(`/api/movimientos?usuario_id=${state.usuarioId}`),
     fetch(`/api/msi/resumen?usuario_id=${state.usuarioId}`)
   ]);
+  const tarjetas = await resTarjetas.json();
   const movimientos = await resBanco.json();
   const msiResumen = await resMSI.json();
-
-  const totalAbonos = movimientos.filter(m=>m.tipo==='abono').reduce((s,m)=>s+m.monto,0);
-  const totalCargos = movimientos.filter(m=>m.tipo==='cargo').reduce((s,m)=>s+m.monto,0);
   const movRecientes = movimientos.slice(0,5);
 
+  const tarjetaColors = {
+    'konfio': '#9B59B6', 'santander': '#E74C3C', 'bbva': '#1565C0',
+    'banamex': '#E67E22', 'hsbc': '#27AE60', 'desconocida': 'var(--muted)'
+  };
+
   content.innerHTML = `
-    <!-- FACTURAS -->
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Facturas</div>
+    <!-- FACTURAS RECIBIDAS -->
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Facturas recibidas</div>
     <div class="cards-grid" style="margin-bottom:20px">
       <div class="stat-card" style="--accent-card:var(--accent)">
         <div class="stat-label">Total facturas</div>
         <div class="stat-value">${r.total_facturas || 0}</div>
-        <div class="stat-sub">${r.emitidas||0} emitidas · ${r.recibidas||0} recibidas</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Por cobrar</div>
-        <div class="stat-value" style="color:var(--accent2)">${fmt(r.por_cobrar||0)}</div>
-        <div class="stat-sub">${Math.max(0,(r.emitidas||0)-(r.conciliadas||0))} facturas pendientes</div>
+        <div class="stat-sub">${r.recibidas||0} recibidas · ${r.conciliadas||0} conciliadas</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
         <div class="stat-label">Por pagar</div>
         <div class="stat-value" style="color:var(--danger)">${fmt(r.por_pagar||0)}</div>
         <div class="stat-sub">${r.pendientes||0} facturas pendientes</div>
       </div>
-      <div class="stat-card" style="--accent-card:${(r.balance||0)>=0?'var(--accent)':'var(--danger)'}">
-        <div class="stat-label">Balance neto</div>
-        <div class="stat-value" style="color:${(r.balance||0) >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmt(r.balance||0)}</div>
-        <div class="stat-sub">Emitido − Recibido</div>
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Ya pagado</div>
+        <div class="stat-value" style="color:var(--accent)">${fmt(r.total_pagado||0)}</div>
+        <div class="stat-sub">${r.conciliadas||0} facturas conciliadas</div>
       </div>
     </div>
 
-    <!-- ESTADO DE CUENTA -->
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Estado de cuenta</div>
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Movimientos registrados</div>
-        <div class="stat-value">${movimientos.length}</div>
-        <div class="stat-sub">${movimientos.filter(m=>m.tipo==='abono').length} abonos · ${movimientos.filter(m=>m.tipo==='cargo').length} cargos</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Total gastado</div>
-        <div class="stat-value" style="color:var(--danger)">${fmt(totalCargos)}</div>
-        <div class="stat-sub">Cargos del periodo</div>
-      </div>
-      <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Conciliados</div>
-        <div class="stat-value">${movimientos.filter(m=>m.conciliado).length}</div>
-        <div class="stat-sub">de ${movimientos.length} movimientos</div>
-      </div>
-    </div>
+    <!-- TARJETAS -->
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Por tarjeta</div>
+    ${tarjetas.length === 0 ? '<div class="empty-state" style="padding:20px;margin-bottom:20px"><p>Sin estados de cuenta aún</p></div>' :
+    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:20px">
+      ${tarjetas.map(t => {
+        const color = tarjetaColors[t.nombre.toLowerCase()] || 'var(--accent)';
+        const pct = t.total_movimientos > 0 ? Math.round(t.facturas_con_match/t.total_movimientos*100) : 0;
+        return `
+        <div class="table-wrap" style="padding:16px;border-top:3px solid ${color}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-family:var(--font-head);font-size:16px;font-weight:700;color:${color}">${t.nombre}</div>
+            <span class="badge" style="background:${color}22;color:${color};border-color:${color}44">${t.total_movimientos} movs</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">Total gastado</div>
+              <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--danger)">${fmt(t.total_cargos)}</div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">A meses (MSI)</div>
+              <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--accent2)">${fmt(t.monto_msi)}</div>
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+              <span>Facturas capturadas</span><span>${pct}%</span>
+            </div>
+            <div style="height:5px;background:var(--surface2);border-radius:99px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:99px"></div>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
 
     <!-- MSI -->
     ${msiResumen.compras_activas > 0 ? `
-    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Meses sin intereses</div>
+    <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Meses sin intereses (MSI)</div>
     <div class="cards-grid" style="margin-bottom:20px">
       <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Compras activas MSI</div>
+        <div class="stat-label">Compras activas</div>
         <div class="stat-value">${msiResumen.compras_activas}</div>
         <div class="stat-sub">A meses sin intereses</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
         <div class="stat-label">Deuda total MSI</div>
         <div class="stat-value" style="color:var(--danger)">${fmt(msiResumen.total_deuda_msi||0)}</div>
-        <div class="stat-sub">Saldo pendiente</div>
+        <div class="stat-sub">Saldo pendiente acumulado</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Pago mensual MSI</div>
+        <div class="stat-label">Se cobra este mes</div>
         <div class="stat-value" style="color:var(--accent2)">${fmt(msiResumen.pago_mensual_msi||0)}</div>
-        <div class="stat-sub">Se cobra este mes</div>
+        <div class="stat-sub">Suma de mensualidades</div>
       </div>
     </div>` : ''}
 
@@ -1036,13 +1050,13 @@ async function renderDashboard() {
         ${movRecientes.length === 0 ? '<div class="empty-state" style="padding:30px"><p>Sin movimientos aún</p></div>' : `
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Descripción</th><th>Tarjeta</th><th>Monto</th></tr></thead>
             <tbody>
               ${movRecientes.map(m=>`
                 <tr>
                   <td class="text-sm text-muted">${m.fecha||'—'}</td>
-                  <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${m.descripcion||'—'}</td>
-                  <td>${m.tipo==='abono'?'<span class="badge badge-ok">Abono</span>':'<span class="badge badge-danger">Cargo</span>'}</td>
+                  <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${m.descripcion||'—'}</td>
+                  <td class="text-xs text-muted">${(m.referencia||'').split('-')[0].trim()}</td>
                   <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};">${fmt(m.monto)}</td>
                 </tr>
               `).join('')}
@@ -1111,6 +1125,13 @@ async function renderFacturas() {
               <option value="pagada">Pagada</option>
               <option value="cancelada">Cancelada</option>
             </select>
+            <select onchange="filtrar('tarjeta',this.value)">
+              <option value="">Todas las tarjetas</option>
+              <option value="konfio">Konfío</option>
+              <option value="santander">Santander</option>
+              <option value="bbva">BBVA</option>
+              <option value="desconocida">Sin asignar</option>
+            </select>
           </div>
         </div>
         <button class="btn btn-primary btn-sm" onclick="abrirModalFactura()">+ Agregar</button>
@@ -1129,6 +1150,7 @@ async function cargarYRenderFacturas() {
   if (f.mes) url += `&mes=${f.mes}`;
   if (f.anio) url += `&anio=${f.anio}`;
   if (f.estado) url += `&estado=${f.estado}`;
+  if (f.tarjeta) url += `&tarjeta=${f.tarjeta}`;
 
   const res = await fetch(url);
   state.facturas = await res.json();
@@ -1148,7 +1170,7 @@ function renderTablaFacturas(facturas) {
         <tr>
           <th>Folio</th><th>Fecha</th><th>Tipo</th><th>Empresa</th>
           <th>RFC</th><th>Concepto</th><th>Subtotal</th><th>IVA</th>
-          <th>Total</th><th>Estado</th><th>Conciliada</th><th></th>
+          <th>Total</th><th>Tarjeta</th><th>Estado</th><th>Conciliada</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -1165,6 +1187,7 @@ function renderTablaFacturas(facturas) {
             <td class="text-mono text-sm">${fmt(f.subtotal)}</td>
             <td class="text-mono text-sm">${fmt(f.iva)}</td>
             <td class="text-mono" style="font-weight:500">${fmt(f.total)}</td>
+            <td><span class="tag" style="font-size:10px">${f.tarjeta||'—'}</span></td>
             <td>${badgeEstado(f.estado_pago)}</td>
             <td>${badgeConciliada(f)}</td>
             <td>
@@ -1533,7 +1556,7 @@ async function handleFiles(files) {
       if (res.status === 409 && data.duplicado) {
         toast(`⚠ ${file.name} — DUPLICADO: ${data.mensaje}`, 'warn');
       } else if (res.ok) {
-        toast(`✓ ${file.name} — ${data.fuente_extraccion === 'ia' ? 'IA extrajo' : 'XML leído'}: ${data.nombre_emisor || data.folio}`, 'success');
+        toast(`✓ ${file.name} → ${data.tarjeta||'?'} — ${data.fuente_extraccion === 'ia' ? 'IA extrajo' : 'XML leído'}: ${data.nombre_emisor || data.folio}`, 'success');
       } else {
         toast(`✗ ${file.name}: ${data.error}`, 'error');
       }
