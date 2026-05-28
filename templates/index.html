@@ -681,6 +681,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <button class="nav-item" onclick="setPage('msi')">
         <span class="icon">◑</span> MSI
       </button>
+      <button class="nav-item" onclick="setPage('cierres')">
+        <span class="icon">◫</span> Cierres
+      </button>
       <button class="nav-item" onclick="setPage('reportes')">
         <span class="icon">◉</span> Reportes
       </button>
@@ -915,9 +918,9 @@ function cambiarUsuario(id) {
 function setPage(page) {
   state.page = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const idx = ['dashboard','facturas','banco','conciliacion','msi','reportes'].indexOf(page);
+  const idx = ['dashboard','facturas','banco','conciliacion','msi','cierres','reportes'].indexOf(page);
   document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
-  const titles = { dashboard: 'Dashboard', facturas: 'Facturas', banco: 'Estado de Cuenta', conciliacion: 'Conciliación', msi: 'Compras a Meses', reportes: 'Reportes' };
+  const titles = { dashboard: 'Dashboard', facturas: 'Facturas', banco: 'Estado de Cuenta', conciliacion: 'Conciliación', msi: 'Compras a Meses', cierres: 'Cierres Mensuales', cierre_detalle: 'Detalle del Cierre', reportes: 'Reportes' };
   document.getElementById('page-title').textContent = titles[page] || page;
   renderPage();
 }
@@ -931,6 +934,8 @@ async function renderPage() {
     case 'banco': await renderBanco(); break;
     case 'conciliacion': await renderConciliacion(); break;
     case 'msi': await renderMSI(); break;
+    case 'cierres': await renderCierres(); break;
+    case 'cierre_detalle': await renderCierreDetalle(state.cierreId); break;
     case 'reportes': await renderReportes(); break;
   }
 }
@@ -1740,29 +1745,42 @@ async function analizarEstadoCuentaIA(input) {
     const data = await res.json();
 
     if (res.ok) {
-      const driveMsg = data.drive?.ok ? `<br><span style="color:var(--accent);font-size:11px">✓ Drive: ${data.drive.nombre}</span>` : '';
-      const msiMsg = data.msi_guardadas > 0 ? `
-        <div style="margin-top:10px;padding:10px;background:rgba(225,143,0,0.08);border-radius:var(--r);border:1px solid rgba(225,143,0,0.2)">
-          <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px">MSI DETECTADAS — ${data.msi_guardadas} compras a meses</div>
-          <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-            <div><span class="text-muted">Pago mensual total:</span> <strong>$${Number(data.pago_mensual_msi).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">Ver detalle en pestaña "MSI" del menú</div>
-        </div>` : '';
+      const driveMsg = data.drive?.ok ? `<span style="color:var(--accent);font-size:11px">✓ Drive guardado</span>` : '';
       resultEl.innerHTML = `
-        <div style="background:var(--surface2);border-radius:var(--r);padding:14px;border:1px solid rgba(225,143,0,0.2)">
-          <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">${data.banco} — ${data.periodo}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-            <div><span class="text-muted">Saldo inicial:</span> <strong>$${Number(data.saldo_inicial).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-            <div><span class="text-muted">Saldo final:</span> <strong>$${Number(data.saldo_final).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></div>
-            <div><span class="text-muted">Movimientos encontrados:</span> <strong>${data.movimientos_extraidos}</strong></div>
-            <div><span class="text-muted">Guardados en sistema:</span> <strong>${data.movimientos_guardados}</strong></div>
+        <div style="background:var(--surface2);border-radius:var(--r);padding:16px;border:1px solid rgba(225,143,0,0.25)">
+          <div style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--accent);margin-bottom:12px">
+            ${data.banco} — ${data.periodo}
           </div>
-          ${msiMsg}
-          ${driveMsg}
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+            <div style="background:var(--surface);border-radius:var(--r);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;font-family:var(--font-head)">${data.movimientos_guardados}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Movimientos</div>
+            </div>
+            <div style="background:var(--surface);border-radius:var(--r);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;font-family:var(--font-head);color:var(--danger)">$${Number(data.total_cargos||0).toLocaleString('es-MX',{minimumFractionDigits:0})}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Total gastado</div>
+            </div>
+            <div style="background:var(--surface);border-radius:var(--r);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;font-family:var(--font-head);color:var(--accent2)">${data.movimientos_msi||0}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">A meses (MSI)</div>
+            </div>
+          </div>
+
+          ${data.msi_guardadas > 0 ? `
+          <div style="padding:8px 12px;background:rgba(225,143,0,0.08);border-radius:var(--r);margin-bottom:10px;font-size:12px">
+            <span style="color:var(--accent);font-weight:600">◑ ${data.msi_guardadas} compras MSI registradas</span>
+            <span class="text-muted"> — pago mensual total: <strong>$${Number(data.pago_mensual_msi||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</strong></span>
+          </div>` : ''}
+
+          <div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted)">
+            ${driveMsg}
+            <button class="btn btn-secondary btn-sm" onclick="setPage('cierres')" style="font-size:11px;padding:4px 10px">Ver cierre del mes →</button>
+            <button class="btn btn-secondary btn-sm" onclick="setPage('banco')" style="font-size:11px;padding:4px 10px">Ver movimientos →</button>
+          </div>
         </div>
       `;
-      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} importados${data.msi_guardadas > 0 ? ` + ${data.msi_guardadas} MSI` : ''}`, 'success');
+      toast(`✓ ${data.movimientos_guardados} movimientos de ${data.banco} — $${Number(data.total_cargos||0).toLocaleString('es-MX',{maximumFractionDigits:0})} total`, 'success');
       await cargarYRenderBanco();
     } else {
       resultEl.innerHTML = `<span class="badge badge-danger">✗ ${data.error}</span>`;
@@ -1898,6 +1916,165 @@ async function renderMSI() {
         <span class="text-mono" style="color:var(--accent2);font-weight:600">${fmt(totalMensualidades)}</span>
       </div>
     </div>`}
+  `;
+}
+
+// ─── CIERRES MENSUALES ───────────────────────────────────────────────────────
+async function renderCierres() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+
+  const res = await fetch(`/api/cierres?usuario_id=${state.usuarioId}`);
+  const cierres = await res.json();
+
+  content.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div class="text-sm text-muted">Cada cierre se genera automáticamente al analizar un estado de cuenta. Muestra el resumen completo del mes y cuántas facturas tienen soporte.</div>
+    </div>
+    ${cierres.length === 0 ? `
+      <div class="empty-state">
+        <div class="empty-icon">◫</div>
+        <p>Sin cierres aún — analiza un estado de cuenta para generar el primer cierre</p>
+      </div>` : `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      ${cierres.map(c => `
+        <div class="table-wrap" style="padding:20px;cursor:pointer" onclick="verCierre(${c.id})">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <div style="font-family:var(--font-head);font-size:18px;font-weight:700">${c.banco} — ${c.periodo}</div>
+              <div class="text-sm text-muted">${c.anio} · ${c.total_movimientos} movimientos registrados</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              ${c.cerrado ? '<span class="badge badge-ok">Cerrado</span>' : '<span class="badge badge-warn">Abierto</span>'}
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();verCierre(${c.id})">Ver detalle →</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+            <div style="text-align:center">
+              <div style="font-size:16px;font-weight:700;font-family:var(--font-head);color:var(--danger)">${fmt(c.total_cargos)}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Total gastado</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:16px;font-weight:700;font-family:var(--font-head)">${c.movimientos_contado}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Al contado</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:16px;font-weight:700;font-family:var(--font-head);color:var(--accent2)">${c.movimientos_msi}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">A meses</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:16px;font-weight:700;font-family:var(--font-head)">${fmt(c.monto_msi)}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Monto MSI</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:16px;font-weight:700;font-family:var(--font-head);color:${c.porcentaje_facturas>=80?'var(--accent)':c.porcentaje_facturas>=50?'var(--accent2)':'var(--danger)'}">${c.porcentaje_facturas}%</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Facturas</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+}
+
+async function verCierre(id) {
+  state.cierreId = id;
+  setPage('cierre_detalle');
+}
+
+async function renderCierreDetalle(id) {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+
+  const res = await fetch(`/api/cierres/${id}`);
+  const c = await res.json();
+
+  const pct = c.total_movimientos > 0 ? Math.round(c.facturas_con_match / c.total_movimientos * 100) : 0;
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <button class="btn btn-ghost btn-sm" onclick="setPage('cierres')">← Volver</button>
+      <div>
+        <div style="font-family:var(--font-head);font-size:20px;font-weight:700">${c.banco} — ${c.periodo}</div>
+        <div class="text-sm text-muted">Cierre mensual · ${c.total_movimientos} movimientos</div>
+      </div>
+    </div>
+
+    <!-- Resumen cards -->
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="stat-card" style="--accent-card:var(--danger)">
+        <div class="stat-label">Total gastado</div>
+        <div class="stat-value" style="color:var(--danger)">${fmt(c.total_cargos)}</div>
+        <div class="stat-sub">${c.movimientos_contado} al contado + ${c.movimientos_msi} a meses</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent2)">
+        <div class="stat-label">Monto a meses (MSI)</div>
+        <div class="stat-value" style="color:var(--accent2)">${fmt(c.monto_msi)}</div>
+        <div class="stat-sub">${c.movimientos_msi} compras diferidas</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Facturas capturadas</div>
+        <div class="stat-value">${c.facturas_con_match}<span style="font-size:16px;color:var(--muted)">/${c.total_movimientos}</span></div>
+        <div class="stat-sub">${pct}% de cobertura</div>
+      </div>
+      <div class="stat-card" style="--accent-card:var(--accent)">
+        <div class="stat-label">Total abonos</div>
+        <div class="stat-value" style="color:var(--accent)">${fmt(c.total_abonos)}</div>
+        <div class="stat-sub">Pagos recibidos</div>
+      </div>
+    </div>
+
+    <!-- Movimientos sin factura -->
+    <div class="table-wrap" style="margin-bottom:20px">
+      <div class="table-header">
+        <div>
+          <span class="section-title" style="font-size:14px">Movimientos sin factura</span>
+          <div class="text-sm text-muted" style="margin-top:2px">${c.movimientos_sin_factura.length} gastos pendientes de factura</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="ejecutarConciliacion().then(()=>renderCierreDetalle(${id}))">◎ Conciliar</button>
+      </div>
+      ${c.movimientos_sin_factura.length === 0 ?
+        '<div class="empty-state" style="padding:30px"><p>✓ Todos los movimientos tienen factura</p></div>' :
+        `<table>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Monto</th><th>Tarjetahabiente</th><th>Tipo</th></tr></thead>
+          <tbody>
+            ${c.movimientos_sin_factura.map(m => `
+              <tr>
+                <td class="text-sm text-muted">${m.fecha||'—'}</td>
+                <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion}</td>
+                <td class="text-mono" style="color:var(--danger)">${fmt(m.monto)}</td>
+                <td class="text-sm text-muted">${(m.referencia||'').replace(/^[^-]+-\s*/,'')}</td>
+                <td>${m.es_msi ? '<span class="badge badge-warn">MSI</span>' : '<span class="badge badge-info">Contado</span>'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`}
+    </div>
+
+    <!-- Facturas del mes -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <span class="section-title" style="font-size:14px">Facturas registradas este mes</span>
+        <span class="text-sm text-muted">${c.facturas.length} facturas</span>
+      </div>
+      ${c.facturas.length === 0 ?
+        '<div class="empty-state" style="padding:30px"><p>Sin facturas registradas para este periodo</p></div>' :
+        `<table>
+          <thead><tr><th>Folio</th><th>Empresa</th><th>Total</th><th>Match</th></tr></thead>
+          <tbody>
+            ${c.facturas.map(f => `
+              <tr>
+                <td class="text-mono text-sm">${f.folio||'—'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.empresa||'—'}</td>
+                <td class="text-mono">${fmt(f.total)}</td>
+                <td>${f.conciliada ?
+                  '<span class="badge badge-ok">✓ Conciliada</span>' :
+                  '<span class="badge badge-danger">Sin match</span>'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`}
+    </div>
   `;
 }
 
