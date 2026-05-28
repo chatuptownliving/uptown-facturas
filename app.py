@@ -911,6 +911,24 @@ def exportar_excel():
     nombre = f'uptown_conciliacion_{anio or "all"}_{mes or "all"}.xlsx'
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nombre)
 
+# ─── RESET (SOLO PRUEBAS) ────────────────────────────────────────────────────
+
+@app.route('/api/reset', methods=['POST'])
+def reset_datos():
+    password = request.json.get('password', '')
+    reset_key = os.environ.get('RESET_PASSWORD', 'uptown-reset-2025')
+    if password != reset_key:
+        return jsonify({'error': 'Contraseña incorrecta'}), 403
+    try:
+        MovimientoBancario.query.delete()
+        ComprasMSI.query.delete()
+        Factura.query.delete()
+        db.session.commit()
+        return jsonify({'ok': True, 'mensaje': 'Todos los datos han sido eliminados'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 # ─── INIT ────────────────────────────────────────────────────────────────────
 
 _db_initialized = False
