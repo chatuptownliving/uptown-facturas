@@ -1056,6 +1056,37 @@ def dashboard_tarjetas():
 
     return jsonify(list(tarjetas.values()))
 
+# ─── MOVIMIENTOS SIN FACTURA ─────────────────────────────────────────────────
+
+@app.route('/api/movimientos/sin-factura', methods=['GET'])
+def movimientos_sin_factura():
+    """Movimientos de cargo que no tienen factura conciliada."""
+    usuario_id = request.args.get('usuario_id', 1, type=int)
+    mes = request.args.get('mes', type=int)
+    anio = request.args.get('anio', type=int)
+
+    q = MovimientoBancario.query.filter_by(usuario_id=usuario_id, tipo='cargo', conciliado=False)
+    if mes: q = q.filter_by(mes=mes)
+    if anio: q = q.filter_by(anio=anio)
+    movs = q.order_by(MovimientoBancario.fecha.desc()).all()
+
+    total_sin_factura = sum(m.monto for m in movs)
+    es_msi = lambda d: any(k in (d or '').upper() for k in ['A MESES','MSI','MCI'])
+
+    return jsonify({
+        'total': len(movs),
+        'monto_total': total_sin_factura,
+        'movimientos': [{
+            'id': m.id,
+            'fecha': m.fecha.isoformat() if m.fecha else None,
+            'descripcion': m.descripcion,
+            'monto': m.monto,
+            'tarjeta': m.tarjeta or '—',
+            'referencia': m.referencia,
+            'es_msi': es_msi(m.descripcion)
+        } for m in movs]
+    })
+
 # ─── CIERRE MENSUAL ──────────────────────────────────────────────────────────
 
 @app.route('/api/cierres', methods=['GET'])
