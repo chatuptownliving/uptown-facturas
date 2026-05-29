@@ -978,6 +978,10 @@ async function renderDashboard() {
   const msiResumen = await resMSI.json();
   const movRecientes = movimientos.slice(0,5);
 
+  // Movimientos sin factura
+  const resSinFac = await fetch(`/api/movimientos/sin-factura?usuario_id=${state.usuarioId}`);
+  const sinFac = await resSinFac.json();
+
   const tarjetaColors = {
     'konfio': '#9B59B6', 'santander': '#E74C3C', 'bbva': '#1565C0',
     'banamex': '#E67E22', 'hsbc': '#27AE60', 'banorte': '#C0392B',
@@ -1061,6 +1065,9 @@ async function renderDashboard() {
       </div>
     </div>` : ''}
 
+    <!-- MOVIMIENTOS SIN FACTURA -->
+    <div id="dash-sin-factura" style="margin-bottom:20px"></div>
+
     <!-- GRID INFERIOR -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div>
@@ -1075,11 +1082,12 @@ async function renderDashboard() {
             <thead><tr><th>Fecha</th><th>Descripción</th><th>Tarjeta</th><th>Monto</th></tr></thead>
             <tbody>
               ${movRecientes.map(m=>`
-                <tr>
+                <tr style="opacity:${m.conciliado?'0.6':'1'}">
                   <td class="text-sm text-muted">${m.fecha||'—'}</td>
                   <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${m.descripcion||'—'}</td>
                   <td class="text-xs text-muted">${(m.referencia||'').split('-')[0].trim()}</td>
                   <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};">${fmt(m.monto)}</td>
+                  <td>${m.conciliado?'<span style="color:var(--accent);font-size:11px">✓</span>':'<span style="color:var(--danger);font-size:11px">○</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1092,6 +1100,51 @@ async function renderDashboard() {
   const fRes = await fetch(`/api/facturas?usuario_id=${state.usuarioId}`);
   const facturas = (await fRes.json()).slice(0,6);
   document.getElementById('dash-facturas-recientes').innerHTML = renderTablaFacturasMini(facturas);
+
+  // Render bloque sin factura
+  const sfEl = document.getElementById('dash-sin-factura');
+  if (sfEl && sinFac.total > 0) {
+    sfEl.innerHTML = `
+      <div style="background:rgba(240,80,80,0.06);border:1px solid rgba(240,80,80,0.25);border-radius:var(--r-lg);padding:16px 20px;margin-bottom:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 2s infinite;flex-shrink:0"></div>
+            <div>
+              <div style="font-family:var(--font-head);font-size:15px;font-weight:700">${sinFac.total} gastos sin factura</div>
+              <div class="text-sm text-muted">Movimientos del estado de cuenta que no tienen factura registrada</div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--danger)">${fmt(sinFac.monto_total)}</div>
+            <div class="text-xs text-muted">pendiente de facturar</div>
+          </div>
+        </div>
+        <table id="tabla-sin-fac-dash" style="font-size:12px">
+          <thead><tr>
+            <th class="sortable" onclick="sortTableById('tabla-sin-fac-dash',0,'text')">Fecha</th>
+            <th>Descripción</th>
+            <th>Tarjeta</th>
+            <th class="sortable" onclick="sortTableById('tabla-sin-fac-dash',3,'num')">Monto</th>
+            <th>Tipo</th>
+          </tr></thead>
+          <tbody>
+            ${sinFac.movimientos.slice(0,10).map(m=>`
+              <tr>
+                <td class="text-muted" style="white-space:nowrap">${m.fecha||'—'}</td>
+                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion}</td>
+                <td><span class="tag" style="font-size:10px">${m.tarjeta}</span></td>
+                <td class="text-mono" style="color:var(--danger);font-weight:600">${fmt(m.monto)}</td>
+                <td>${m.es_msi?'<span class="badge badge-warn" style="font-size:10px">MSI</span>':'<span class="badge" style="font-size:10px;background:var(--surface2)">Contado</span>'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${sinFac.total > 10 ? `<div style="text-align:center;padding:10px 0 0"><button class="btn btn-ghost btn-sm" onclick="setPage('conciliacion')">Ver los ${sinFac.total} gastos sin factura →</button></div>` : ''}
+      </div>
+    `;
+  } else if (sfEl) {
+    sfEl.innerHTML = `<div style="padding:12px 16px;background:rgba(0,200,100,0.06);border:1px solid rgba(0,200,100,0.2);border-radius:var(--r);font-size:13px;display:flex;align-items:center;gap:8px"><span style="color:var(--accent)">✓</span> Todos los movimientos del estado de cuenta tienen factura registrada</div>`;
+  }
 }
 
 function renderTablaFacturasMini(facturas) {
@@ -1329,14 +1382,14 @@ async function cargarYRenderBanco() {
       </thead>
       <tbody>
         ${state.movimientos.map(m => `
-          <tr>
+          <tr style="border-left:3px solid ${m.conciliado?'var(--accent)':m.tipo==='cargo'?'rgba(240,80,80,0.4)':'transparent'}">
             <td class="text-sm text-muted">${m.fecha || '—'}</td>
             <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion || '—'}</td>
             <td class="text-mono text-xs text-muted">${m.referencia || '—'}</td>
             <td>${m.tipo === 'abono' ? '<span class="badge badge-ok">Abono</span>' : '<span class="badge badge-danger">Cargo</span>'}</td>
             <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};font-weight:500">${fmt(m.monto)}</td>
             <td class="text-mono text-sm text-muted">${m.saldo ? fmt(m.saldo) : '—'}</td>
-            <td>${m.conciliado ? '<span class="badge badge-ok">Sí</span>' : '<span class="badge badge-warn">No</span>'}</td>
+            <td>${m.conciliado ? '<span class="badge badge-ok" style="font-size:10px">✓ Con factura</span>' : m.tipo==='cargo'?'<span class="badge badge-danger" style="font-size:10px">Sin factura</span>':'<span class="badge" style="font-size:10px;background:var(--surface2)">Abono</span>'}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1365,6 +1418,7 @@ async function renderConciliacion() {
       <button class="btn btn-primary" onclick="ejecutarConciliacion()">◎ Ejecutar conciliación</button>
     </div>
     <div id="conc-resumen" style="margin-bottom:20px"></div>
+    <div id="conc-sin-factura"></div>
     <div class="table-wrap">
       <div class="table-header">
         <span class="section-title" style="font-size:13px">Detalle por factura</span>
@@ -1406,6 +1460,47 @@ async function cargarConciliacion() {
         </div>
       </div>
     `;
+  }
+
+  // Movimientos sin factura
+  const resSF = await fetch(`/api/movimientos/sin-factura?usuario_id=${state.usuarioId}`);
+  const sinFacData = await resSF.json();
+  const sfConc = document.getElementById('conc-sin-factura');
+  if (sfConc) {
+    if (sinFacData.total > 0) {
+      sfConc.innerHTML = `
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <div>
+              <span class="section-title" style="font-size:14px">Gastos sin factura — ${sinFacData.total} movimientos</span>
+              <div class="text-sm text-muted" style="margin-top:2px">Estos gastos aparecen en el estado de cuenta pero no tienen factura registrada · Total: <strong style="color:var(--danger)">${fmt(sinFacData.monto_total)}</strong></div>
+            </div>
+          </div>
+          <table id="tabla-conc-sf">
+            <thead><tr>
+              <th class="sortable" onclick="sortTableById('tabla-conc-sf',0,'text')">Fecha</th>
+              <th>Descripción</th>
+              <th class="sortable" onclick="sortTableById('tabla-conc-sf',2,'text')">Tarjeta</th>
+              <th class="sortable" onclick="sortTableById('tabla-conc-sf',3,'num')">Monto</th>
+              <th>Tipo</th>
+            </tr></thead>
+            <tbody>
+              ${sinFacData.movimientos.map(m=>`
+                <tr>
+                  <td class="text-muted" style="white-space:nowrap">${m.fecha||'—'}</td>
+                  <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion}</td>
+                  <td><span class="tag" style="font-size:10px">${m.tarjeta}</span></td>
+                  <td class="text-mono" style="color:var(--danger);font-weight:600">${fmt(m.monto)}</td>
+                  <td>${m.es_msi?'<span class="badge badge-warn" style="font-size:10px">MSI</span>':'<span class="badge" style="font-size:10px;background:var(--surface2)">Contado</span>'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      sfConc.innerHTML = `<div style="padding:12px 16px;background:rgba(0,200,100,0.06);border:1px solid rgba(0,200,100,0.2);border-radius:var(--r);margin-bottom:20px;font-size:13px">✓ Todos los movimientos tienen factura</div>`;
+    }
   }
 
   const fRes = await fetch(`/api/facturas?usuario_id=${state.usuarioId}`);
