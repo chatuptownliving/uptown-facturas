@@ -1766,7 +1766,10 @@ async function analizarEstadoCuentaIA(input) {
   fd.append('banco', banco);
 
   try {
-    const res = await fetch('/api/estados-cuenta/analizar-ia', { method: 'POST', body: fd });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 minutos
+    const res = await fetch('/api/estados-cuenta/analizar-ia', { method: 'POST', body: fd, signal: controller.signal });
+    clearTimeout(timeout);
     const data = await res.json();
 
     if (res.ok) {
@@ -1812,7 +1815,12 @@ async function analizarEstadoCuentaIA(input) {
       toast('Error analizando estado de cuenta', 'error');
     }
   } catch(e) {
-    resultEl.innerHTML = '<span class="badge badge-danger">✗ Error de conexión</span>';
+    if (e.name === 'AbortError') {
+      resultEl.innerHTML = '<span class="badge badge-danger">✗ Tiempo agotado — el PDF es muy grande, intenta de nuevo</span>';
+      toast('El análisis tardó demasiado, intenta de nuevo', 'error');
+    } else {
+      resultEl.innerHTML = '<span class="badge badge-danger">✗ Error de conexión</span>';
+    }
   }
   input.value = '';
 }
