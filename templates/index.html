@@ -959,7 +959,8 @@ async function renderDashboard() {
 
   const tarjetaColors = {
     'konfio': '#9B59B6', 'santander': '#E74C3C', 'bbva': '#1565C0',
-    'banamex': '#E67E22', 'hsbc': '#27AE60', 'desconocida': 'var(--muted)'
+    'banamex': '#E67E22', 'hsbc': '#27AE60', 'banorte': '#C0392B',
+    'desconocida': 'var(--muted)'
   };
 
   content.innerHTML = `
@@ -1130,6 +1131,7 @@ async function renderFacturas() {
               <option value="konfio">Konfío</option>
               <option value="santander">Santander</option>
               <option value="bbva">BBVA</option>
+              <option value="banorte">Banorte</option>
               <option value="desconocida">Sin asignar</option>
             </select>
           </div>
