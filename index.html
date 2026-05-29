@@ -1016,28 +1016,37 @@ async function renderDashboard() {
       ${tarjetas.map(t => {
         const color = tarjetaColors[t.nombre.toLowerCase()] || 'var(--accent)';
         const pct = t.total_movimientos > 0 ? Math.round(t.facturas_con_match/t.total_movimientos*100) : 0;
+        const cargos_total = t.total_movimientos - (t.movimientos_msi||0);
+        const pct_movs = t.total_movimientos > 0 ? Math.round(t.facturas_con_match/t.total_movimientos*100) : 0;
         return `
         <div class="table-wrap" style="padding:16px;border-top:3px solid ${color}">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-family:var(--font-head);font-size:16px;font-weight:700;color:${color}">${t.nombre}</div>
-            <span class="badge" style="background:${color}22;color:${color};border-color:${color}44">${t.total_movimientos} movs</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-            <div>
-              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${tooltip('Suma de todos los cargos de esta tarjeta')}&nbsp;Total gastado</div>
-              <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--danger)">${fmt(t.total_cargos)}</div>
-            </div>
-            <div>
-              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${tooltip('Compras diferidas a meses sin intereses')}&nbsp;A meses (MSI)</div>
-              <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--accent2)">${fmt(t.monto_msi)}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-family:var(--font-head);font-size:17px;font-weight:800;color:${color}">${t.nombre}</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="badge" style="background:${color}22;color:${color};border-color:${color}44;font-size:11px">${t.total_movimientos} movs</span>
+              ${t.cargos_sin_factura > 0 ? `<span class="badge badge-danger" style="font-size:11px">${t.cargos_sin_factura} sin factura</span>` : '<span class="badge badge-ok" style="font-size:11px">✓ Al día</span>'}
             </div>
           </div>
-          <div style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:12px">
+            <div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Total gastado</div>
+              <div style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--danger)">${fmt(t.total_cargos)}</div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.05em">A meses (MSI)</div>
+              <div style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--accent2)">${fmt(t.monto_msi)}</div>
+            </div>
+            <div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Facturas</div>
+              <div style="font-family:var(--font-head);font-size:16px;font-weight:700">${t.facturas_conciliadas||0}<span style="color:var(--muted);font-size:12px">/${t.total_facturas||0}</span></div>
+            </div>
+          </div>
+          <div>
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
-              <span>Facturas capturadas ${tooltip('Porcentaje de movimientos de esta tarjeta que tienen una factura conciliada')}</span><span>${pct}%</span>
+              <span>Cobertura de facturas</span><span>${pct_movs}%</span>
             </div>
             <div style="height:5px;background:var(--surface2);border-radius:99px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:${color};border-radius:99px"></div>
+              <div style="height:100%;width:${pct_movs}%;background:${color};border-radius:99px"></div>
             </div>
           </div>
         </div>`;
@@ -1297,18 +1306,15 @@ async function renderBanco() {
     <div class="table-wrap" style="padding:24px;margin-bottom:20px">
       <div class="section-title" style="margin-bottom:4px">Estado de Cuenta</div>
       <div class="text-sm text-muted" style="margin-bottom:20px">Sube el PDF o foto de tu estado de cuenta — la IA lee todos los movimientos y los registra automáticamente</div>
-
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
         <div class="form-group">
           <label class="form-label">Banco</label>
-          <input class="form-input" id="ia-banco" placeholder="Ej. BBVA, Banamex, HSBC">
+          <input class="form-input" id="ia-banco" placeholder="Ej. Konfío, Banorte, Santander">
         </div>
         <div class="form-group">
           <label class="form-label">Año</label>
           <select class="form-input" id="edo-anio">
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
+            <option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>
           </select>
         </div>
         <div class="form-group">
@@ -1318,7 +1324,6 @@ async function renderBanco() {
           </select>
         </div>
       </div>
-
       <div class="upload-zone" onclick="document.getElementById('ia-edo-file').click()">
         <div class="upload-icon">⬆</div>
         <div class="upload-title">Arrastra o selecciona el estado de cuenta</div>
@@ -1326,15 +1331,9 @@ async function renderBanco() {
         <input type="file" id="ia-edo-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="analizarEstadoCuentaIA(this)">
       </div>
       <div id="ia-resultado" style="margin-top:14px"></div>
-
       <hr style="margin:20px 0">
-
       <div class="section-title" style="font-size:13px;margin-bottom:8px">¿Tienes CSV del banco?</div>
-      <div class="text-sm text-muted" style="margin-bottom:10px">Formato: fecha, descripcion, monto (+/-), saldo</div>
-      <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-        ↑ Importar CSV
-        <input type="file" id="btn-import-csv" accept=".csv" style="display:none" onchange="importarCSV(this)">
-      </label>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer">↑ Importar CSV<input type="file" id="btn-import-csv" accept=".csv" style="display:none" onchange="importarCSV(this)"></label>
       <div id="csv-result" style="margin-top:8px"></div>
     </div>
 
@@ -1372,29 +1371,57 @@ async function cargarYRenderBanco() {
   const el = document.getElementById('banco-tabla-body');
   if (!el) return;
   if (!state.movimientos.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">◫</div><p>Sin movimientos. Importa un CSV o agrega manualmente.</p></div>';
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">◫</div><p>Sin movimientos. Sube un estado de cuenta con IA.</p></div>';
     return;
   }
-  el.innerHTML = `
-    <table>
-      <thead>
-        <tr><th class='sortable' onclick="sortTableById('tabla-movs',0,'text')">Fecha</th><th>Descripción</th><th>Referencia</th><th class='sortable' onclick="sortTableById('tabla-movs',3,'text')">Tipo</th><th class='sortable' onclick="sortTableById('tabla-movs',4,'num')">Monto</th><th>Saldo</th><th class='sortable' onclick="sortTableById('tabla-movs',6,'text')">Conciliado</th></tr>
-      </thead>
-      <tbody>
-        ${state.movimientos.map(m => `
-          <tr style="border-left:3px solid ${m.conciliado?'var(--accent)':m.tipo==='cargo'?'rgba(240,80,80,0.4)':'transparent'}">
-            <td class="text-sm text-muted">${m.fecha || '—'}</td>
-            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion || '—'}</td>
-            <td class="text-mono text-xs text-muted">${m.referencia || '—'}</td>
-            <td>${m.tipo === 'abono' ? '<span class="badge badge-ok">Abono</span>' : '<span class="badge badge-danger">Cargo</span>'}</td>
-            <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};font-weight:500">${fmt(m.monto)}</td>
-            <td class="text-mono text-sm text-muted">${m.saldo ? fmt(m.saldo) : '—'}</td>
-            <td>${m.conciliado ? '<span class="badge badge-ok" style="font-size:10px">✓ Con factura</span>' : m.tipo==='cargo'?'<span class="badge badge-danger" style="font-size:10px">Sin factura</span>':'<span class="badge" style="font-size:10px;background:var(--surface2)">Abono</span>'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+
+  // Agrupar por banco (referencia)
+  const grupos = {};
+  state.movimientos.forEach(m => {
+    const banco = (m.referencia||'Sin clasificar').split('-')[0].trim();
+    if (!grupos[banco]) grupos[banco] = [];
+    grupos[banco].push(m);
+  });
+
+  const renderTablaGrupo = (movs, tid) => `
+    <table id="${tid}">
+    <thead><tr>
+      <th class="sortable" onclick="sortTableById('${tid}',0,'text')">Fecha</th>
+      <th>Descripción</th>
+      <th class="sortable" onclick="sortTableById('${tid}',2,'text')">Tipo</th>
+      <th class="sortable" onclick="sortTableById('${tid}',3,'num')">Monto</th>
+      <th class="sortable" onclick="sortTableById('${tid}',4,'text')">Estado</th>
+    </tr></thead>
+    <tbody>
+      ${movs.map(m => `
+        <tr style="border-left:3px solid ${m.conciliado?'var(--accent)':m.tipo==='cargo'?'rgba(240,80,80,0.35)':'transparent'}">
+          <td class="text-sm text-muted" style="white-space:nowrap">${m.fecha||'—'}</td>
+          <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.descripcion||'—'}</td>
+          <td>${m.tipo==='abono'?'<span class="badge badge-ok">Abono</span>':'<span class="badge badge-danger">Cargo</span>'}</td>
+          <td class="text-mono" style="color:${m.tipo==='abono'?'var(--accent)':'var(--danger)'};font-weight:600">${fmt(m.monto)}</td>
+          <td>${m.conciliado?'<span class="badge badge-ok" style="font-size:10px">✓ Con factura</span>':m.tipo==='cargo'?'<span class="badge badge-danger" style="font-size:10px">Sin factura</span>':'<span class="badge" style="font-size:10px;background:var(--surface2)">Abono</span>'}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+    </table>`;
+
+  el.innerHTML = Object.entries(grupos).map(([banco, movs], i) => {
+    const cargos = movs.filter(m=>m.tipo==='cargo');
+    const sinFac = cargos.filter(m=>!m.conciliado).length;
+    const totalCargos = cargos.reduce((s,m)=>s+m.monto,0);
+    return `
+      <div class="table-wrap" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--font-head);font-size:14px;font-weight:700">${banco}</span>
+            <span class="badge" style="font-size:10px">${movs.length} movimientos</span>
+            ${sinFac>0?`<span class="badge badge-danger" style="font-size:10px">${sinFac} sin factura</span>`:'<span class="badge badge-ok" style="font-size:10px">✓ Todos con factura</span>'}
+          </div>
+          <span class="text-mono text-sm" style="color:var(--danger);font-weight:600">${fmt(totalCargos)} en cargos</span>
+        </div>
+        ${renderTablaGrupo(movs, 'tabla-banco-'+i)}
+      </div>`;
+  }).join('');
 }
 
 // ─── CONCILIACIÓN ─────────────────────────────────────────────────────────
@@ -1403,19 +1430,39 @@ async function renderConciliacion() {
   const resComp = await fetch(`/api/conciliacion/comparativa?usuario_id=${state.usuarioId}`);
   const comp = await resComp.json();
 
+  // Build per-tarjeta summary
+  const tarjetaResumen = Object.entries(comp.por_tarjeta||{}).map(([nombre, data]) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border-radius:var(--r);font-size:12px">
+      <span style="font-weight:600">${nombre}</span>
+      <div style="display:flex;gap:12px">
+        <span><span class="badge badge-ok" style="font-size:10px">${data.con_factura} con factura</span></span>
+        <span><span class="badge ${data.sin_factura>0?'badge-danger':'badge-ok'}" style="font-size:10px">${data.sin_factura} sin factura</span></span>
+        <span class="text-muted">${fmt(data.monto_sin_factura)} pendiente</span>
+      </div>
+    </div>
+  `).join('');
+
   content.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div class="section-title">Conciliación automática</div>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
-          <div style="font-family:var(--font-head);font-size:28px;font-weight:800;color:var(--accent)">${comp.conciliadas||0}<span style="color:var(--muted);font-size:18px">/${comp.total_facturas||0}</span></div>
-          <div>
-            <div class="text-sm">facturas conciliadas</div>
-            <div class="text-xs text-muted">${comp.sin_match||0} sin match en estado de cuenta</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:20px">
+      <div style="flex:1">
+        <div class="section-title" style="margin-bottom:10px">Conciliación automática</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:var(--surface2);border-radius:var(--r);padding:12px">
+            <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Facturas conciliadas</div>
+            <div style="font-family:var(--font-head);font-size:26px;font-weight:800;color:var(--accent)">${comp.conciliadas||0}<span style="color:var(--muted);font-size:16px">/${comp.total_facturas||0}</span></div>
+            <div class="text-xs text-muted">${comp.sin_match||0} facturas sin match</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:var(--r);padding:12px">
+            <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Movimientos con factura</div>
+            <div style="font-family:var(--font-head);font-size:26px;font-weight:800;color:${comp.movimientos_sin_factura>0?'var(--danger)':'var(--accent)'}">
+              ${comp.movimientos_con_factura||0}<span style="color:var(--muted);font-size:16px">/${comp.total_movimientos||0}</span>
+            </div>
+            <div class="text-xs text-muted">${comp.movimientos_sin_factura||0} movimientos requieren factura</div>
           </div>
         </div>
+        ${tarjetaResumen ? `<div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">${tarjetaResumen}</div>` : ''}
       </div>
-      <button class="btn btn-primary" onclick="ejecutarConciliacion()">◎ Ejecutar conciliación</button>
+      <button class="btn btn-primary" onclick="ejecutarConciliacion()" style="flex-shrink:0">◎ Ejecutar conciliación</button>
     </div>
     <div id="conc-resumen" style="margin-bottom:20px"></div>
     <div id="conc-sin-factura"></div>
