@@ -821,47 +821,53 @@ Responde SOLO el JSON"""
 
 @app.route('/api/conciliacion/comparativa', methods=['GET'])
 def conciliacion_comparativa():
-    """Compara facturas contra movimientos del estado de cuenta."""
+    """Compara facturas contra movimientos, agrupado por tarjeta."""
     usuario_id = request.args.get('usuario_id', 1, type=int)
     mes = request.args.get('mes', type=int)
     anio = request.args.get('anio', type=int)
 
+    NOMBRES_TARJETA = {
+        'konfio': 'Konfío', 'banorte': 'Banorte', 'santander': 'Santander',
+        'bbva': 'BBVA', 'banamex': 'Banamex', 'hsbc': 'HSBC',
+        'desconocida': 'Sin clasificar', 'banco': 'Sin clasificar',
+    }
+
     qf = Factura.query.filter_by(usuario_id=usuario_id)
-    qm = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
-    if mes:
-        qf = qf.filter_by(mes=mes)
-        qm = qm.filter_by(mes=mes)
-    if anio:
-        qf = qf.filter_by(anio=anio)
-        qm = qm.filter_by(anio=anio)
+    qm = MovimientoBancario.query.filter_by(usuario_id=usuario_id, tipo='cargo')
+    if mes: qf = qf.filter_by(mes=mes); qm = qm.filter_by(mes=mes)
+    if anio: qf = qf.filter_by(anio=anio); qm = qm.filter_by(anio=anio)
 
     facturas = qf.all()
     movimientos = qm.all()
 
-    total = len(facturas)
+    total_f = len(facturas)
     conciliadas = sum(1 for f in facturas if f.conciliada)
-    sin_match = total - conciliadas
+    total_m = len(movimientos)
+    movs_con_factura = sum(1 for m in movimientos if m.conciliado)
+    movs_sin_factura = total_m - movs_con_factura
 
-    # Facturas sin movimiento correspondiente
-    pendientes = []
-    for f in facturas:
-        if not f.conciliada:
-            pendientes.append({
-                'id': f.id,
-                'folio': f.folio,
-                'empresa': f.nombre_emisor if f.tipo == 'recibida' else f.nombre_receptor,
-                'total': f.total,
-                'fecha': f.fecha_emision.isoformat() if f.fecha_emision else None,
-                'tipo': f.tipo
-            })
+    # Por tarjeta
+    por_tarjeta = {}
+    for m in movimientos:
+        t = m.tarjeta or 'desconocida'
+        nombre = NOMBRES_TARJETA.get(t, t)
+        if nombre not in por_tarjeta:
+            por_tarjeta[nombre] = {'movimientos': 0, 'con_factura': 0, 'sin_factura': 0, 'monto_sin_factura': 0.0}
+        por_tarjeta[nombre]['movimientos'] += 1
+        if m.conciliado:
+            por_tarjeta[nombre]['con_factura'] += 1
+        else:
+            por_tarjeta[nombre]['sin_factura'] += 1
+            por_tarjeta[nombre]['monto_sin_factura'] += m.monto
 
     return jsonify({
-        'total_facturas': total,
+        'total_facturas': total_f,
         'conciliadas': conciliadas,
-        'sin_match': sin_match,
-        'total_movimientos': len(movimientos),
-        'movimientos_conciliados': sum(1 for m in movimientos if m.conciliado),
-        'pendientes': pendientes[:20]  # max 20
+        'sin_match': total_f - conciliadas,
+        'total_movimientos': total_m,
+        'movimientos_con_factura': movs_con_factura,
+        'movimientos_sin_factura': movs_sin_factura,
+        'por_tarjeta': por_tarjeta,
     })
 
 # ─── CONCILIACIÓN ────────────────────────────────────────────────────────────
@@ -1024,24 +1030,52 @@ def dashboard_tarjetas():
     mes = request.args.get('mes', type=int)
     anio = request.args.get('anio', type=int)
 
-    # Obtener todas las tarjetas con movimientos
+    NOMBRES_TARJETA = {
+        'konfio': 'Konfío',
+        'banorte': 'Banorte',
+        'santander': 'Santander',
+        'bbva': 'BBVA',
+        'banamex': 'Banamex',
+        'hsbc': 'HSBC',
+        'desconocida': 'Sin clasificar',
+        'banco': 'Sin clasificar',
+    }
+
     q = MovimientoBancario.query.filter_by(usuario_id=usuario_id)
     if mes: q = q.filter_by(mes=mes)
     if anio: q = q.filter_by(anio=anio)
     movimientos = q.all()
+
+    # Count facturas per tarjeta
+    qf = Factura.query.filter_by(usuario_id=usuario_id)
+    if mes: qf = qf.filter_by(mes=mes)
+    if anio: qf = qf.filter_by(anio=anio)
+    facturas = qf.all()
+    facturas_por_tarjeta = {}
+    for f in facturas:
+        t = f.tarjeta or 'desconocida'
+        if t not in facturas_por_tarjeta:
+            facturas_por_tarjeta[t] = {'total': 0, 'conciliadas': 0}
+        facturas_por_tarjeta[t]['total'] += 1
+        if f.conciliada:
+            facturas_por_tarjeta[t]['conciliadas'] += 1
 
     tarjetas = {}
     for m in movimientos:
         t = m.tarjeta or 'desconocida'
         if t not in tarjetas:
             tarjetas[t] = {
-                'nombre': t.replace('_',' ').title(),
+                'key': t,
+                'nombre': NOMBRES_TARJETA.get(t, t.replace('_',' ').title()),
                 'total_movimientos': 0,
+                'cargos_sin_factura': 0,
                 'total_cargos': 0.0,
                 'total_abonos': 0.0,
                 'movimientos_msi': 0,
                 'monto_msi': 0.0,
                 'facturas_con_match': 0,
+                'total_facturas': facturas_por_tarjeta.get(t, {}).get('total', 0),
+                'facturas_conciliadas': facturas_por_tarjeta.get(t, {}).get('conciliadas', 0),
             }
         tarjetas[t]['total_movimientos'] += 1
         if m.tipo == 'cargo':
@@ -1049,6 +1083,8 @@ def dashboard_tarjetas():
             if any(k in (m.descripcion or '').upper() for k in ['A MESES','MSI','MCI']):
                 tarjetas[t]['movimientos_msi'] += 1
                 tarjetas[t]['monto_msi'] += m.monto
+            if not m.conciliado:
+                tarjetas[t]['cargos_sin_factura'] += 1
         else:
             tarjetas[t]['total_abonos'] += m.monto
         if m.conciliado:
@@ -1060,28 +1096,46 @@ def dashboard_tarjetas():
 
 @app.route('/api/movimientos/sin-factura', methods=['GET'])
 def movimientos_sin_factura():
-    """Movimientos de cargo que no tienen factura conciliada."""
+    """Movimientos de cargo que no tienen factura conciliada, agrupados por tarjeta."""
     usuario_id = request.args.get('usuario_id', 1, type=int)
     mes = request.args.get('mes', type=int)
     anio = request.args.get('anio', type=int)
+    tarjeta_filter = request.args.get('tarjeta', '')
+
+    NOMBRES_TARJETA = {
+        'konfio': 'Konfío', 'banorte': 'Banorte', 'santander': 'Santander',
+        'bbva': 'BBVA', 'banamex': 'Banamex', 'hsbc': 'HSBC',
+        'desconocida': 'Sin clasificar', 'banco': 'Sin clasificar',
+    }
 
     q = MovimientoBancario.query.filter_by(usuario_id=usuario_id, tipo='cargo', conciliado=False)
     if mes: q = q.filter_by(mes=mes)
     if anio: q = q.filter_by(anio=anio)
+    if tarjeta_filter: q = q.filter_by(tarjeta=tarjeta_filter)
     movs = q.order_by(MovimientoBancario.fecha.desc()).all()
 
-    total_sin_factura = sum(m.monto for m in movs)
     es_msi = lambda d: any(k in (d or '').upper() for k in ['A MESES','MSI','MCI'])
+
+    # Group by tarjeta
+    por_tarjeta = {}
+    for m in movs:
+        t = m.tarjeta or 'desconocida'
+        if t not in por_tarjeta:
+            por_tarjeta[t] = {'nombre': NOMBRES_TARJETA.get(t, t), 'total': 0, 'monto': 0.0}
+        por_tarjeta[t]['total'] += 1
+        por_tarjeta[t]['monto'] += m.monto
 
     return jsonify({
         'total': len(movs),
-        'monto_total': total_sin_factura,
+        'monto_total': sum(m.monto for m in movs),
+        'por_tarjeta': por_tarjeta,
         'movimientos': [{
             'id': m.id,
             'fecha': m.fecha.isoformat() if m.fecha else None,
             'descripcion': m.descripcion,
             'monto': m.monto,
-            'tarjeta': m.tarjeta or '—',
+            'tarjeta': NOMBRES_TARJETA.get(m.tarjeta or 'desconocida', m.tarjeta or '—'),
+            'tarjeta_key': m.tarjeta or 'desconocida',
             'referencia': m.referencia,
             'es_msi': es_msi(m.descripcion)
         } for m in movs]
