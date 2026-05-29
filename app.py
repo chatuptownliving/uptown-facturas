@@ -156,6 +156,8 @@ def detectar_tarjeta(banco):
         return 'konfio'
     if any(k in b for k in ['santander', 'snt', 'bansantan']):
         return 'santander'
+    if any(k in b for k in ['banorte', 'mercantil del norte', 'enlace negocios']):
+        return 'banorte'
     if any(k in b for k in ['bbva', 'bancomer']):
         return 'bbva'
     if any(k in b for k in ['banamex', 'citibanamex']):
@@ -1157,6 +1159,18 @@ def init_db_once():
     if not _db_initialized:
         try:
             db.create_all()
+            # Agregar columnas nuevas si no existen en PostgreSQL
+            with db.engine.connect() as conn:
+                for tabla, col, tipo in [
+                    ('factura', 'tarjeta', 'VARCHAR(50)'),
+                    ('movimiento_bancario', 'tarjeta', 'VARCHAR(50)'),
+                    ('cierre_mensual', 'tarjeta', 'VARCHAR(50)'),
+                ]:
+                    try:
+                        conn.execute(db.text(f'ALTER TABLE {tabla} ADD COLUMN {col} {tipo}'))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
             if not Usuario.query.first():
                 db.session.add(Usuario(nombre='Admin', email='admin@empresa.com'))
                 db.session.commit()
