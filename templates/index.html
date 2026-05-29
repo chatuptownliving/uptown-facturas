@@ -1166,7 +1166,7 @@ function renderTablaFacturasMini(facturas) {
           ${facturas.map(f => `
             <tr>
               <td class="text-mono text-sm">${f.folio || '—'}</td>
-              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.tipo==='emitida'?(f.nombre_receptor||'—'):(f.nombre_emisor||'—')}</td>
+              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);text-decoration:underline;cursor:pointer">${f.tipo==='emitida'?(f.nombre_receptor||'—'):(f.nombre_emisor||'—')}</td>
               <td class="text-mono">${fmt(f.total)}</td>
               <td>${badgeConciliada(f)}</td>
             </tr>
@@ -1273,7 +1273,7 @@ function renderTablaFacturas(facturas) {
       </thead>
       <tbody>
         ${facturas.map(f => `
-          <tr>
+          <tr style="cursor:pointer" onclick="verFactura(${f.id},'${(f.archivo_nombre||'').replace(/'/g,'&#39;')}','${((f.tipo==='recibida'?f.nombre_emisor:f.nombre_receptor)||'').replace(/'/g,'&#39;')}','${f.tipo}')">
             <td class="text-mono text-sm">${f.folio || '—'}</td>
             <td class="text-sm text-muted">${f.fecha_emision ? f.fecha_emision.slice(0,10) : '—'}</td>
             <td>${f.tipo === 'emitida' ? '<span class="badge badge-ok">Emitida</span>' : '<span class="badge badge-purple">Recibida</span>'}</td>
@@ -1289,7 +1289,7 @@ function renderTablaFacturas(facturas) {
             <td>${badgeEstado(f.estado_pago)}</td>
             <td>${badgeConciliada(f)}</td>
             <td>
-              <button class="btn btn-ghost btn-icon btn-sm" title="Eliminar" onclick="eliminarFactura(${f.id})">✕</button>
+              <button class="btn btn-ghost btn-icon btn-sm" title="Eliminar" onclick="event.stopPropagation();eliminarFactura(${f.id})">✕</button>
             </td>
           </tr>
         `).join('')}
