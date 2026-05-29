@@ -570,6 +570,19 @@ def agregar_factura_manual():
     db.session.add(factura); db.session.commit()
     return jsonify({'id': factura.id, 'folio': factura.folio}), 201
 
+@app.route('/api/facturas/<int:factura_id>/archivo', methods=['GET'])
+def ver_archivo_factura(factura_id):
+    f = Factura.query.get_or_404(factura_id)
+    if not f.archivo_contenido:
+        return jsonify({'error': 'Sin archivo guardado'}), 404
+    mime = MIME_MAP.get(f.archivo_tipo, 'application/octet-stream')
+    return send_file(
+        io.BytesIO(f.archivo_contenido),
+        mimetype=mime,
+        as_attachment=False,
+        download_name=f.archivo_nombre or f'factura_{factura_id}.{f.archivo_tipo}'
+    )
+
 @app.route('/api/facturas/<int:factura_id>', methods=['DELETE'])
 def eliminar_factura(factura_id):
     f = Factura.query.get_or_404(factura_id)
