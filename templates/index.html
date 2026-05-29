@@ -638,10 +638,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
 /* ── Tooltips ── */
 .tooltip-wrap { position:relative; display:inline-flex; align-items:center; gap:4px; }
-.tooltip-icon { display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--muted);font-size:9px;cursor:help;flex-shrink:0;border:1px solid rgba(255,255,255,0.15); }
+.tooltip-icon { display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--muted);font-size:9px;cursor:help;flex-shrink:0;border:1px solid rgba(255,255,255,0.15);vertical-align:middle; }
 .tooltip-icon:hover { background:rgba(225,143,0,0.2);color:var(--accent);border-color:var(--accent); }
-.tooltip-box { visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;font-size:11px;color:var(--text);width:200px;z-index:999;pointer-events:none;transition:opacity 0.15s;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,0.4); }
-.tooltip-icon:hover .tooltip-box, .tooltip-wrap:hover .tooltip-box { visibility:visible;opacity:1; }
+.tooltip-box { display:none;position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;font-size:11px;color:var(--text);width:220px;z-index:9999;pointer-events:none;line-height:1.6;box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+.tooltip-icon.active .tooltip-box { visibility:visible;opacity:1; }
 /* ── Sortable tables ── */
 th.sortable { cursor:pointer;user-select:none; }
 th.sortable:hover { color:var(--accent); }
@@ -1020,17 +1020,17 @@ async function renderDashboard() {
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
             <div>
-              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">Total gastado</div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${tooltip('Suma de todos los cargos de esta tarjeta')}&nbsp;Total gastado</div>
               <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--danger)">${fmt(t.total_cargos)}</div>
             </div>
             <div>
-              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">A meses (MSI)</div>
+              <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${tooltip('Compras diferidas a meses sin intereses')}&nbsp;A meses (MSI)</div>
               <div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--accent2)">${fmt(t.monto_msi)}</div>
             </div>
           </div>
           <div style="margin-top:10px">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
-              <span>Facturas capturadas</span><span>${pct}%</span>
+              <span>Facturas capturadas ${tooltip('Porcentaje de movimientos de esta tarjeta que tienen una factura conciliada')}</span><span>${pct}%</span>
             </div>
             <div style="height:5px;background:var(--surface2);border-radius:99px;overflow:hidden">
               <div style="height:100%;width:${pct}%;background:${color};border-radius:99px"></div>
@@ -1325,7 +1325,7 @@ async function cargarYRenderBanco() {
   el.innerHTML = `
     <table>
       <thead>
-        <tr><th>Fecha</th><th>Descripción</th><th>Referencia</th><th>Tipo</th><th>Monto</th><th>Saldo</th><th>Conciliado</th></tr>
+        <tr><th class='sortable' onclick="sortTableById('tabla-movs',0,'text')">Fecha</th><th>Descripción</th><th>Referencia</th><th class='sortable' onclick="sortTableById('tabla-movs',3,'text')">Tipo</th><th class='sortable' onclick="sortTableById('tabla-movs',4,'num')">Monto</th><th>Saldo</th><th class='sortable' onclick="sortTableById('tabla-movs',6,'text')">Conciliado</th></tr>
       </thead>
       <tbody>
         ${state.movimientos.map(m => `
@@ -1417,9 +1417,9 @@ async function cargarConciliacion() {
     return;
   }
   el.innerHTML = `
-    <table>
+    <table id='tabla-conc'>
       <thead>
-        <tr><th>Folio</th><th>Fecha</th><th>Empresa</th><th>Tipo</th><th>Total factura</th><th>Mov. banco</th><th>Diferencia</th><th>Estado</th></tr>
+        <tr><th>Folio</th><th class='sortable' onclick="sortTableById('tabla-conc',1,'text')">Fecha</th><th>Empresa</th><th>Tipo</th><th class='sortable' onclick="sortTableById('tabla-conc',4,'num')">Total factura</th><th>Mov. banco</th><th>Diferencia</th><th class='sortable' onclick="sortTableById('tabla-conc',7,'text')">Estado</th></tr>
       </thead>
       <tbody>
         ${facturas.map(f => {
@@ -1903,17 +1903,17 @@ async function renderMSI() {
     <div style="margin-bottom:6px;font-family:var(--font-head);font-size:11px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase">Resumen MSI</div>
     <div class="cards-grid" style="margin-bottom:24px">
       <div class="stat-card" style="--accent-card:var(--accent)">
-        <div class="stat-label">Compras activas</div>
+        <div class="stat-label tooltip-wrap">Compras activas ${tooltip('Número de compras a meses sin intereses que aún tienen saldo pendiente')}</div>
         <div class="stat-value">${resumen.compras_activas || 0}</div>
         <div class="stat-sub">A meses sin intereses</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--danger)">
-        <div class="stat-label">Deuda total</div>
+        <div class="stat-label tooltip-wrap">Deuda total ${tooltip('Suma de todos los saldos pendientes de tus compras a meses. Es lo que falta por pagar en total.')}</div>
         <div class="stat-value" style="color:var(--danger)">${fmt(totalDeuda)}</div>
         <div class="stat-sub">Saldo pendiente acumulado</div>
       </div>
       <div class="stat-card" style="--accent-card:var(--accent2)">
-        <div class="stat-label">Se cobra este mes</div>
+        <div class="stat-label tooltip-wrap">Se cobra este mes ${tooltip('Suma de todas las mensualidades activas. Este monto aparecerá en tu próximo estado de cuenta como cargos a meses.')}</div>
         <div class="stat-value" style="color:var(--accent2)">${fmt(totalMensualidades)}</div>
         <div class="stat-sub">Suma de todas las mensualidades</div>
       </div>
@@ -1930,16 +1930,16 @@ async function renderMSI() {
         <span class="section-title" style="font-size:14px">Detalle por compra</span>
         <span class="text-sm text-muted">Cada fila = una compra a meses detectada en tu estado de cuenta</span>
       </div>
-      <table>
+      <table id='tabla-msi'>
         <thead>
           <tr>
             <th>Descripción</th>
             <th>Banco</th>
-            <th>Compra original</th>
-            <th>Mensualidad</th>
-            <th>Progreso de pago</th>
-            <th>Saldo pendiente</th>
-            <th>Estado</th>
+            <th class='sortable' onclick="sortTableById('tabla-msi',2,'num')">Compra original</th>
+            <th class='sortable' onclick="sortTableById('tabla-msi',3,'num')">Mensualidad</th>
+            <th class='sortable' onclick="sortTableById('tabla-msi',4,'text')">Progreso</th>
+            <th class='sortable' onclick="sortTableById('tabla-msi',5,'num')">Saldo pendiente</th>
+            <th class='sortable' onclick="sortTableById('tabla-msi',6,'text')">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -2219,8 +2219,63 @@ function makeSortable(tableId, cols) {
 }
 
 // ─── TOOLTIP HELPER ──────────────────────────────────────────────────────────
+let _tipEl = null;
+function _initTooltips() {
+  if (_tipEl) return;
+  _tipEl = document.createElement('div');
+  _tipEl.className = 'tooltip-box';
+  _tipEl.style.display = 'none';
+  document.body.appendChild(_tipEl);
+  document.addEventListener('mousemove', e => {
+    if (_tipEl.style.display === 'block') {
+      let x = e.clientX + 12;
+      let y = e.clientY - 40;
+      if (x + 240 > window.innerWidth) x = e.clientX - 240;
+      if (y < 0) y = e.clientY + 20;
+      _tipEl.style.left = x + 'px';
+      _tipEl.style.top = y + 'px';
+    }
+  });
+}
 function tooltip(text) {
-  return `<span class="tooltip-icon">ⓘ<span class="tooltip-box">${text}</span></span>`;
+  return `<span class="tooltip-icon" onmouseenter="_showTip(event,'${text.replace(/'/g,'&#39;')}')" onmouseleave="_hideTip()">ⓘ</span>`;
+}
+function _showTip(e, text) {
+  _initTooltips();
+  _tipEl.textContent = text;
+  _tipEl.style.display = 'block';
+  let x = e.clientX + 12;
+  let y = e.clientY - 40;
+  if (x + 240 > window.innerWidth) x = e.clientX - 240;
+  if (y < 0) y = e.clientY + 20;
+  _tipEl.style.left = x + 'px';
+  _tipEl.style.top = y + 'px';
+}
+function _hideTip() {
+  if (_tipEl) _tipEl.style.display = 'none';
+}
+
+// ─── UNIVERSAL TABLE SORT ────────────────────────────────────────────────────
+function sortTableById(tableId, colIndex, type) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const th = table.querySelectorAll('th')[colIndex];
+  const asc = !th.classList.contains('sort-asc');
+  table.querySelectorAll('th').forEach(t => t.classList.remove('sort-asc','sort-desc'));
+  th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+  rows.sort((a,b) => {
+    const av = a.cells[colIndex]?.textContent.trim()||'';
+    const bv = b.cells[colIndex]?.textContent.trim()||'';
+    if (type==='num') {
+      return asc ? (parseFloat(av.replace(/[$,]/g,''))||0)-(parseFloat(bv.replace(/[$,]/g,''))||0)
+                 : (parseFloat(bv.replace(/[$,]/g,''))||0)-(parseFloat(av.replace(/[$,]/g,''))||0);
+    }
+    return asc ? av.localeCompare(bv,'es') : bv.localeCompare(av,'es');
+  });
+  rows.forEach(r => tbody.appendChild(r));
 }
 
 // ─── RESET ───────────────────────────────────────────────────────────────────
