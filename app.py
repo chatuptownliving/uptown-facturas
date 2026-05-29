@@ -873,11 +873,17 @@ def conciliacion_comparativa():
 # ─── CONCILIACIÓN ────────────────────────────────────────────────────────────
 
 def conciliar_automatico(usuario_id):
+    """
+    Facturas recibidas = gastos que pagamos = deben coincidir con CARGOS bancarios.
+    Facturas emitidas  = cobros a clientes  = deben coincidir con ABONOS bancarios.
+    """
     facturas = Factura.query.filter_by(usuario_id=usuario_id, conciliada=False).all()
     movimientos = MovimientoBancario.query.filter_by(usuario_id=usuario_id, conciliado=False).all()
     conciliados = 0
     for f in facturas:
-        tipo_mov = 'abono' if f.tipo == 'emitida' else 'cargo'
+        # Recibida = nosotros pagamos = sale dinero = CARGO
+        # Emitida  = nos pagan a nosotros = entra dinero = ABONO
+        tipo_mov = 'cargo' if f.tipo == 'recibida' else 'abono'
         mejor_match = None
         mejor_diff = float('inf')
         for m in movimientos:
@@ -885,7 +891,8 @@ def conciliar_automatico(usuario_id):
             if f.fecha_emision and m.fecha:
                 if abs((f.fecha_emision - m.fecha).days) > 60: continue
             diff = abs(m.monto - f.total)
-            if diff <= f.total * 0.02 and diff < mejor_diff:
+            tolerancia = max(f.total * 0.02, 1.0)  # 2% o $1 mínimo
+            if diff <= tolerancia and diff < mejor_diff:
                 mejor_diff = diff; mejor_match = m
         if mejor_match:
             f.conciliada = True; f.movimiento_id = mejor_match.id; f.estado_pago = 'pagada'
@@ -912,11 +919,12 @@ def resumen_conciliacion():
     recibidas = [f for f in facturas if f.tipo == 'recibida']
     total_emitido = sum(f.total for f in emitidas)
     total_recibido = sum(f.total for f in recibidas)
+    conciliadas = sum(1 for f in facturas if f.conciliada)
     return jsonify({
         'total_facturas': len(facturas),
         'emitidas': len(emitidas), 'recibidas': len(recibidas),
-        'conciliadas': sum(1 for f in facturas if f.conciliada),
-        'pendientes': sum(1 for f in facturas if not f.conciliada),
+        'conciliadas': conciliadas,
+        'pendientes': len(facturas) - conciliadas,
         'total_emitido': total_emitido, 'total_recibido': total_recibido,
         'total_cobrado': sum(f.total for f in emitidas if f.conciliada),
         'total_pagado': sum(f.total for f in recibidas if f.conciliada),
